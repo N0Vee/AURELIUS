@@ -1,0 +1,21 @@
+{
+    "name": "@aurelius/shared-schema",
+    "version": "0.1.0",
+    "private": true,
+    "main": "index.ts",
+    "types": "index.ts",
+    "scripts": {
+        "test": "bun test",
+        "test:watch": "bun test --watch"
+    },
+    "exports": {
+        ".": "./index.ts",
+        "./chat": "./chat.schema.ts",
+        "./tool": "./tool.schema.ts",
+        "./audio": "./audio.schema.ts",
+        "./memory": "./memory.schema.ts"
+    },
+    "dependencies": {
+        "zod": "^4.3.4"
+    }
+}
