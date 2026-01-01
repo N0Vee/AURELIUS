@@ -16,6 +16,9 @@ bun.lockb # (ถ้าต้องการเก็บ lockfile ไว้บน
 **/.next/
 **/out/
 
+# python
+**/venv/
+
 # production
 **/build/
 **/dist/

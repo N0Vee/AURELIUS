@@ -7,7 +7,7 @@ const envSchema = z.object({
 
     // Ollama
     OLLAMA_HOST: z.string().default('http://localhost:11434'),
-    OLLAMA_MODEL: z.string().default('llama3.1'),
+    OLLAMA_MODEL: z.string().default('qwen2.5:7b'),
 
     // Audio Engine (Phase 2)
     AUDIO_ENGINE_URL: z.string().default('ws://localhost:8000/ws'),

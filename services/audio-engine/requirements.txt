@@ -1,10 +1,11 @@
-# Audio Engine (Python GPU Worker)
-# Will be implemented in Phase 2
-
-torch>=2.0.0
-torchaudio>=2.0.0
-transformers>=4.35.0
-fastapi>=0.104.0
-uvicorn>=0.24.0
-websockets>=12.0
-numpy>=1.24.0
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+websockets==12.0
+python-multipart==0.0.9
+torch>=2.1.0
+torchaudio>=2.1.0
+faster-whisper>=1.0.0
+scipy>=1.12.0
+numpy>=1.26.0
+colorama>=0.4.6
+edge-tts>=6.1.0

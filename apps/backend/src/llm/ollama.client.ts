@@ -35,10 +35,31 @@ function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
 export async function* streamChatCompletion(
     messages: ChatMessage[]
 ): AsyncGenerator<string, void, unknown> {
+    const lastMessage = messages[messages.length - 1];
+    let steeredMessages = toOllamaMessages(messages);
+
+    if (lastMessage && lastMessage.role === 'user') {
+        const text = lastMessage.content;
+        const hasThai = /[\u0E00-\u0E7F]/.test(text);
+
+        // Steering: Inject a final SYSTEM message to force language compliance
+        // This is stronger than appending to user message
+        const instruction = hasThai
+            ? 'ANSWER ONLY IN THAI (ภาษาไทย).'
+            : 'ANSWER ONLY IN ENGLISH.';
+
+        steeredMessages.push({
+            role: 'system',
+            content: `[IMPORTANT]: ${instruction}`
+        });
+    }
+
     const ollamaMessages: OllamaMessage[] = [
         { role: 'system', content: CONSTANTS.SYSTEM_PROMPT },
-        ...toOllamaMessages(messages),
+        ...steeredMessages,
     ];
+
+    console.log('[Ollama] Sending request with prompts:', JSON.stringify(ollamaMessages, null, 2));
 
     const response = await fetch(`${env.OLLAMA_HOST}/api/chat`, {
         method: 'POST',
@@ -78,7 +99,14 @@ export async function* streamChatCompletion(
             try {
                 const data: OllamaStreamResponse = JSON.parse(line);
                 if (data.message?.content) {
-                    yield data.message.content;
+                    // Filter: Whitelist ONLY Thai, English, Numbers, Punctuation, and Newlines
+                    // Strips out Chinese, Arabic, emojis, etc.
+                    const cleanContent = data.message.content.replace(/[^\u0E00-\u0E7F\u0000-\u007F\u200B-\u200D\uFEFF]/g, '');
+
+                    if (cleanContent) {
+                        process.stdout.write(cleanContent); // Stream to console
+                        yield cleanContent;
+                    }
                 }
             } catch {
                 // Skip malformed JSON
