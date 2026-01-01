@@ -1,0 +1,39 @@
+# dependencies
+# ใช้ pattern นี้จะครอบคลุม node_modules ทุกที่ (ทั้ง root, apps/web, apps/backend)
+**/node_modules/
+node_modules/
+/.pnp
+.pnp.*
+
+# Bun
+bun.lockb # (ถ้าต้องการเก็บ lockfile ไว้บน git ไม่ต้องใส่บรรทัดนี้ครับ แต่ปกติแนะนำให้เก็บไว้)
+
+# testing
+/coverage
+
+# Next.js
+# ครอบคลุมทุกโปรเจกต์ใน apps
+**/.next/
+**/out/
+
+# production
+**/build/
+**/dist/
+
+# misc
+.DS_Store
+*.pem
+.env*
+!.env.example # อนุญาตให้เอาไฟล์ตัวอย่างขึ้นได้
+
+# debug
+*-debug.log*
+*-error.log*
+
+# Vercel & Turbo (ถ้ามี)
+.vercel
+.turbo
+
+# TypeScript
+*.tsbuildinfo
+# next-env.d.ts # ปกติไฟล์นี้มักจะ ignore กันเพื่อไม่ให้เกิด conflict เวลาเพื่อนร่วมทีมใช้ OS ต่างกัน
