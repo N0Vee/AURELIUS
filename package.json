@@ -9,7 +9,9 @@
     "dev:audio": "cd services/audio-engine && uv run python main.py",
     "audio:setup": "cd services/audio-engine && uv add -r requirements.txt",
     "build": "bun run --filter '*' build",
-    "lint": "bun run --filter '*' lint"
+    "lint": "bun run --filter '*' lint",
+    "dev:desktop": "bun run --filter @aurelius/web tauri dev",
+    "build:desktop": "bun run --filter @aurelius/web tauri build"
   },
   "workspaces": [
     "apps/*",

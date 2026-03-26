@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Tauri Desktop Overlay Modifiers */
+html.tauri, html.tauri body, .tauri {
+  background: transparent !important;
+}
+
+/* Fix transparency override by targeting inline styles from AppLayout */
+html[style*="transparent"], body[style*="transparent"] {
+  background: transparent !important;
+}
+
 /* ===== AURELIUS Design Tokens - Premium Dark with Gold Accent ===== */
 :root {
   /* Base Colors - Dark Gradient */
