@@ -1,3 +1,6 @@
+# user settings (contains API keys — never commit)
+apps/backend/settings.json
+
 # dependencies
 # ใช้ pattern นี้จะครอบคลุม node_modules ทุกที่ (ทั้ง root, apps/web, apps/backend)
 **/node_modules/

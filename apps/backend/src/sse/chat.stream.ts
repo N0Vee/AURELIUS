@@ -1,5 +1,5 @@
 import { Elysia, t } from 'elysia';
-import { streamChatCompletion } from '../llm/ollama.client';
+import { streamChatCompletion } from '../llm/provider';
 import { ChatMessageSchema } from '@aurelius/shared-schema';
 import { z } from 'zod';
 

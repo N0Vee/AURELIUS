@@ -1,8 +1,14 @@
 import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { env } from './config/env';
+import { initSettings } from './config/settings.store';
 import { chatStreamRoute } from './sse/chat.stream';
+import { settingsRoute } from './routes/settings.route';
 import { getSystemStats } from './debug/hardware';
+import { getActiveProviderLabel } from './llm/provider';
+
+// Load settings.json (merges on top of env defaults) before handling any requests
+await initSettings();
 
 const app = new Elysia()
     // CORS for Next.js frontend
@@ -34,6 +40,9 @@ const app = new Elysia()
         }
     })
 
+    // Settings CRUD + connection test
+    .use(settingsRoute)
+
     // Chat routes
     .use(chatStreamRoute)
 
@@ -48,7 +57,7 @@ console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📍 http://${env.HOST}:${env.PORT}
 🔧 Environment: ${env.NODE_ENV}
-🤖 Ollama: ${env.OLLAMA_HOST} (${env.OLLAMA_MODEL})
+🤖 LLM: ${getActiveProviderLabel()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `);
 

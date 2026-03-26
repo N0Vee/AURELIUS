@@ -1,26 +1,30 @@
 import { getSettings } from '../config/settings.store';
-
 import type { ChatMessage } from '@aurelius/shared-schema';
 
-interface OllamaMessage {
+interface OpenRouterMessage {
     role: 'system' | 'user' | 'assistant';
     content: string;
 }
 
-interface OllamaStreamResponse {
+interface OpenRouterStreamChunk {
+    id: string;
+    object: string;
+    created: number;
     model: string;
-    created_at: string;
-    message: {
-        role: string;
-        content: string;
-    };
-    done: boolean;
+    choices: {
+        index: number;
+        delta: {
+            role?: string;
+            content?: string;
+        };
+        finish_reason: string | null;
+    }[];
 }
 
 /**
- * Convert our ChatMessage format to Ollama format
+ * Convert our ChatMessage format to OpenRouter/OpenAI format
  */
-function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
+function toOpenRouterMessages(messages: ChatMessage[]): OpenRouterMessage[] {
     return messages
         .filter(m => m.role !== 'tool')
         .map(m => ({
@@ -30,15 +34,21 @@ function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
 }
 
 /**
- * Stream chat completion from Ollama
+ * Stream chat completion from OpenRouter (OpenAI-compatible API)
  */
 export async function* streamChatCompletion(
     messages: ChatMessage[]
 ): AsyncGenerator<string, void, unknown> {
     const settings = getSettings();
 
+    if (!settings.openrouterApiKey) {
+        throw new Error(
+            'OpenRouter API key is not set. Go to Settings → OpenRouter Configuration to add it.'
+        );
+    }
+
     const lastMessage = messages[messages.length - 1];
-    let steeredMessages = toOllamaMessages(messages);
+    let steeredMessages = toOpenRouterMessages(messages);
 
     if (lastMessage && lastMessage.role === 'user') {
         const text = lastMessage.content;
@@ -55,33 +65,37 @@ export async function* streamChatCompletion(
         });
     }
 
-    const ollamaMessages: OllamaMessage[] = [
+    const openRouterMessages: OpenRouterMessage[] = [
         { role: 'system', content: settings.systemPrompt },
         ...steeredMessages,
     ];
 
-    console.log('[Ollama] Sending request to:', settings.ollamaHost, '| model:', settings.ollamaModel);
+    console.log('[OpenRouter] Sending request | model:', settings.openrouterModel, '| temp:', settings.temperature);
 
-    const response = await fetch(`${settings.ollamaHost}/api/chat`, {
+    const response = await fetch(`${settings.openrouterBaseUrl}/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${settings.openrouterApiKey}`,
+            'HTTP-Referer': settings.openrouterSiteUrl,
+            'X-Title': settings.openrouterSiteName,
+        },
         body: JSON.stringify({
-            model: settings.ollamaModel,
-            messages: ollamaMessages,
+            model: settings.openrouterModel,
+            messages: openRouterMessages,
             stream: true,
-            options: {
-                temperature: settings.temperature,
-                num_predict: settings.maxTokens,
-            },
+            temperature: settings.temperature,
+            max_tokens: settings.maxTokens,
         }),
     });
 
     if (!response.ok) {
-        throw new Error(`Ollama error: ${response.status} ${response.statusText}`);
+        const errorText = await response.text().catch(() => response.statusText);
+        throw new Error(`OpenRouter error: ${response.status} ${errorText}`);
     }
 
     const reader = response.body?.getReader();
-    if (!reader) throw new Error('No response body from Ollama');
+    if (!reader) throw new Error('No response body from OpenRouter');
 
     const decoder = new TextDecoder();
     let buffer = '';
@@ -95,13 +109,24 @@ export async function* streamChatCompletion(
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-            if (!line.trim()) continue;
+            const trimmed = line.trim();
+
+            // Skip empty lines and non-data lines
+            if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+            const jsonStr = trimmed.slice('data: '.length);
+
+            // End of stream signal
+            if (jsonStr === '[DONE]') return;
 
             try {
-                const data: OllamaStreamResponse = JSON.parse(line);
-                if (data.message?.content) {
+                const chunk: OpenRouterStreamChunk = JSON.parse(jsonStr);
+                const content = chunk.choices?.[0]?.delta?.content;
+
+                if (content) {
                     // Filter: Whitelist ONLY Thai, English, Numbers, Punctuation, and Newlines
-                    const cleanContent = data.message.content.replace(
+                    // Strips out Chinese, Arabic, emojis, etc.
+                    const cleanContent = content.replace(
                         /[^\u0E00-\u0E7F\u0000-\u007F\u200B-\u200D\uFEFF]/g,
                         ''
                     );
@@ -112,7 +137,7 @@ export async function* streamChatCompletion(
                     }
                 }
             } catch {
-                // Skip malformed JSON
+                // Skip malformed JSON chunks
             }
         }
     }
