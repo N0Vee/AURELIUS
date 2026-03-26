@@ -22,9 +22,6 @@ function formatTime(timestamp: number): string {
     });
 }
 
-// ─── Waveform bar amplitudes (symmetric, centre-peaked) ───────────────────────
-const WAVE_AMPS = [0.3, 0.55, 0.8, 1, 0.8, 0.55, 0.3];
-
 // ─── Error state ──────────────────────────────────────────────────────────────
 
 function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
@@ -60,95 +57,15 @@ function ErrorState({ message, onRetry }: { message: string; onRetry?: () => voi
 
 function ThinkingIndicator() {
     return (
-        <div className="flex items-center gap-3.5 py-1.5 px-0.5">
-
-            {/* ── Pulsing orb ───────────────────────────────────── */}
-            <div className="relative flex shrink-0 items-center justify-center h-8 w-8">
-                {/* Outermost ripple */}
-                <motion.span
-                    className="absolute inset-0 rounded-full"
-                    style={{ background: 'radial-gradient(circle, var(--accent) 0%, transparent 70%)' }}
-                    animate={{ scale: [1, 2.1], opacity: [0.25, 0] }}
-                    transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
-                />
-                {/* Mid ripple */}
-                <motion.span
-                    className="absolute inset-[4px] rounded-full"
-                    style={{ background: 'radial-gradient(circle, var(--accent) 0%, transparent 70%)' }}
-                    animate={{ scale: [1, 1.7], opacity: [0.35, 0] }}
-                    transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut', delay: 0.38 }}
-                />
-                {/* Inner ring */}
-                <motion.span
-                    className="absolute inset-[7px] rounded-full border border-[var(--accent)]/50"
-                    animate={{ scale: [0.85, 1.15, 0.85], opacity: [0.6, 1, 0.6] }}
-                    transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-                />
-                {/* Core dot */}
-                <motion.span
-                    className="relative block h-2.5 w-2.5 rounded-full bg-[var(--accent)]"
-                    animate={{ scale: [1, 0.78, 1] }}
-                    transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-                    style={{ boxShadow: '0 0 10px 2px var(--accent-glow)' }}
-                />
-            </div>
-
-            {/* ── Waveform bars ─────────────────────────────────── */}
-            <div
-                className="flex items-center gap-[3px]"
-                style={{ height: 22 }}
-                aria-hidden="true"
-            >
-                {WAVE_AMPS.map((amp, i) => (
-                    <motion.span
-                        key={i}
-                        className="block w-[3px] rounded-full bg-[var(--accent)]"
-                        animate={{ scaleY: [amp * 0.25, amp, amp * 0.25] }}
-                        transition={{
-                            duration: 0.72,
-                            repeat: Infinity,
-                            delay: i * 0.075,
-                            ease: 'easeInOut',
-                        }}
-                        style={{
-                            height: '100%',
-                            transformOrigin: '50% 50%',
-                            opacity: 0.45 + amp * 0.55,
-                        }}
-                    />
-                ))}
-            </div>
-
-            {/* ── Animated label ────────────────────────────────── */}
-            <div className="flex items-end gap-[2px]">
-                <motion.span
-                    className="text-sm font-medium tracking-wide"
-                    style={{ color: 'var(--text-secondary)' }}
-                    animate={{ opacity: [0.6, 1, 0.6] }}
-                    transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-                >
-                    Thinking
-                </motion.span>
-
-                {/* Trailing animated dots */}
-                <div className="flex items-end gap-[2px] pb-[2px]">
-                    {[0, 1, 2].map(i => (
-                        <motion.span
-                            key={i}
-                            className="block h-[3px] w-[3px] rounded-full"
-                            style={{ background: 'var(--accent)' }}
-                            animate={{ opacity: [0, 1, 0], y: [0, -2, 0] }}
-                            transition={{
-                                duration: 1.2,
-                                repeat: Infinity,
-                                delay: i * 0.22,
-                                ease: 'easeInOut',
-                            }}
-                        />
-                    ))}
-                </div>
-            </div>
-
+        <div className="flex items-center gap-2.5 py-1.5 px-2">
+            <motion.div
+                className="h-2 w-2 rounded-full bg-[var(--accent)]"
+                animate={{ opacity: [0.4, 1, 0.4], scale: [0.8, 1.1, 0.8] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+            />
+            <span className="text-sm font-medium text-[var(--text-muted)] animate-pulse">
+                Thinking...
+            </span>
         </div>
     );
 }
@@ -329,6 +246,24 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
                                                 </div>
                                             );
                                         },
+                                        h1: ({ children }) => (
+                                            <h1 className="text-xl font-bold mt-5 mb-2 first:mt-0">{children}</h1>
+                                        ),
+                                        h2: ({ children }) => (
+                                            <h2 className="text-lg font-bold mt-4 mb-2 first:mt-0">{children}</h2>
+                                        ),
+                                        h3: ({ children }) => (
+                                            <h3 className="text-base font-semibold mt-3 mb-2 first:mt-0">{children}</h3>
+                                        ),
+                                        h4: ({ children }) => (
+                                            <h4 className="text-sm font-bold mt-3 mb-1 first:mt-0">{children}</h4>
+                                        ),
+                                        h5: ({ children }) => (
+                                            <h5 className="text-sm font-semibold mt-2 mb-1 first:mt-0">{children}</h5>
+                                        ),
+                                        h6: ({ children }) => (
+                                            <h6 className="text-sm font-medium text-[var(--text-muted)] mt-2 mb-1 first:mt-0">{children}</h6>
+                                        ),
                                         p: ({ children }) => (
                                             <p className="text-sm leading-relaxed mb-2 last:mb-0">{children}</p>
                                         ),
@@ -340,6 +275,64 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
                                         ),
                                         strong: ({ children }) => (
                                             <strong className="font-semibold">{children}</strong>
+                                        ),
+                                        table: ({ children }) => (
+                                            <div className="my-4 overflow-x-auto rounded-lg border border-[var(--border)]">
+                                                <table className="w-full text-left text-sm border-collapse">
+                                                    {children}
+                                                </table>
+                                            </div>
+                                        ),
+                                        thead: ({ children }) => (
+                                            <thead className="bg-[var(--surface)] text-[var(--text-primary)] border-b border-[var(--border)]">
+                                                {children}
+                                            </thead>
+                                        ),
+                                        tbody: ({ children }) => (
+                                            <tbody className="divide-y divide-[var(--border)] bg-transparent text-[var(--text-secondary)]">
+                                                {children}
+                                            </tbody>
+                                        ),
+                                        tr: ({ children }) => (
+                                            <tr className="transition-colors hover:bg-[var(--surface)]/50">
+                                                {children}
+                                            </tr>
+                                        ),
+                                        th: ({ children }) => (
+                                            <th className="px-4 py-2 font-semibold border-r border-[var(--border)] last:border-r-0">
+                                                {children}
+                                            </th>
+                                        ),
+                                        td: ({ children }) => (
+                                            <td className="px-4 py-2 border-r border-[var(--border)] last:border-r-0">
+                                                {children}
+                                            </td>
+                                        ),
+                                        hr: () => (
+                                            <hr className="my-4 border-[var(--border)]" />
+                                        ),
+                                        blockquote: ({ children }) => (
+                                            <blockquote className="border-l-4 border-[var(--accent)] pl-4 py-1 my-3 text-[var(--text-muted)] italic bg-[var(--surface)]/30 rounded-r-lg">
+                                                {children}
+                                            </blockquote>
+                                        ),
+                                        a: ({ href, children }) => (
+                                            <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-800 hover:underline break-words">
+                                                {children}
+                                            </a>
+                                        ),
+                                        li: ({ children }) => (
+                                            <li className="leading-relaxed">{children}</li>
+                                        ),
+                                        em: ({ children }) => (
+                                            <em className="italic opacity-90">{children}</em>
+                                        ),
+                                        del: ({ children }) => (
+                                            <del className="line-through opacity-70">{children}</del>
+                                        ),
+                                        img: ({ src, alt }) => (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={src} alt={alt} className="max-w-full h-auto rounded-lg my-3 border border-[var(--border)] shadow-sm" loading="lazy" />
                                         ),
                                     }}
                                 >

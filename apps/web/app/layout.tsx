@@ -16,6 +16,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "AURELIUS",
   description: "Local Personal AI Assistant",
+  icons: {
+    icon: "/images/aurelius-icon.png",
+    shortcut: "/images/aurelius-icon.png",
+    apple: "/images/aurelius-icon.png",
+  },
 };
 
 export default function RootLayout({

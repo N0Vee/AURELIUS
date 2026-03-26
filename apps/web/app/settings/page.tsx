@@ -9,8 +9,7 @@ import {
 } from '@/components/ui';
 import {
     Settings as SettingsIcon,
-    Globe,
-    Cpu,
+
     Wifi,
     MessageSquare,
     Thermometer,
@@ -33,6 +32,7 @@ import {
     FolderOpen,
     HardDrive,
 } from 'lucide-react';
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 // ============================================================
@@ -306,12 +306,18 @@ export default function SettingsPage() {
                                         </span>
                                     )}
                                     <div className={cn(
-                                        'flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] transition-colors',
+                                        'relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-[var(--radius-md)] border transition-colors',
                                         ollamaActive
-                                            ? 'bg-[var(--accent)] text-white'
-                                            : 'bg-[var(--surface-elevated)] text-[var(--text-secondary)]',
+                                            ? 'border-[var(--accent)] bg-white/50 shadow-[0_0_20px_var(--accent-glow)]'
+                                            : 'border-[var(--border)] bg-white/40',
                                     )}>
-                                        <Cpu size={20} />
+                                        <Image
+                                            src="/images/ollama-logo.webp"
+                                            alt="Ollama"
+                                            fill
+                                            className="object-contain p-1.5"
+                                            sizes="40px"
+                                        />
                                     </div>
                                     <div>
                                         <p className="font-semibold text-[var(--text-primary)]">Ollama</p>
@@ -340,12 +346,18 @@ export default function SettingsPage() {
                                         </span>
                                     )}
                                     <div className={cn(
-                                        'flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] transition-colors',
+                                        'relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-[var(--radius-md)] border transition-colors',
                                         openrouterActive
-                                            ? 'bg-[var(--accent)] text-white'
-                                            : 'bg-[var(--surface-elevated)] text-[var(--text-secondary)]',
+                                            ? 'border-[var(--accent)] bg-white/50 shadow-[0_0_20px_var(--accent-glow)]'
+                                            : 'border-[var(--border)] bg-white/40',
                                     )}>
-                                        <Globe size={20} />
+                                        <Image
+                                            src="/images/openrouter-logo.webp"
+                                            alt="OpenRouter"
+                                            fill
+                                            className="object-contain p-1.5"
+                                            sizes="40px"
+                                        />
                                     </div>
                                     <div>
                                         <p className="font-semibold text-[var(--text-primary)]">OpenRouter</p>
@@ -374,7 +386,15 @@ export default function SettingsPage() {
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <CardTitle className="flex items-center gap-2">
-                                    <Cpu size={18} className="text-[var(--safe)]" />
+                                    <span className="relative h-[18px] w-[18px] overflow-hidden rounded-sm border border-[var(--border)] bg-white/50 shadow-sm">
+                                        <Image
+                                            src="/images/ollama-logo.webp"
+                                            alt="Ollama"
+                                            fill
+                                            className="object-contain p-[1px]"
+                                            sizes="18px"
+                                        />
+                                    </span>
                                     Ollama Configuration
                                 </CardTitle>
                                 {ollamaActive && <Badge variant="safe">Active</Badge>}
@@ -433,7 +453,15 @@ export default function SettingsPage() {
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <CardTitle className="flex items-center gap-2">
-                                    <Globe size={18} className="text-[var(--sensitive)]" />
+                                    <span className="relative h-[18px] w-[18px] overflow-hidden rounded-sm border border-[var(--border)] bg-white/50 shadow-sm">
+                                        <Image
+                                            src="/images/openrouter-logo.webp"
+                                            alt="OpenRouter"
+                                            fill
+                                            className="object-contain p-[1px]"
+                                            sizes="18px"
+                                        />
+                                    </span>
                                     OpenRouter Configuration
                                 </CardTitle>
                                 {openrouterActive && <Badge variant="sensitive">Active</Badge>}

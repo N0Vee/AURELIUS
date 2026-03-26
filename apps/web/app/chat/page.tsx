@@ -30,16 +30,11 @@ export default function ChatPage() {
             {/* Header */}
             <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
                 <div className="flex items-center gap-4">
-                    <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-[var(--accent)] to-[var(--accent-glow)] flex items-center justify-center text-white font-medium text-sm shadow-lg shadow-[var(--accent)]/20 ring-2 ring-[var(--surface)]">
-                        A
-                    </div>
                     <div>
                         <h1 className="text-lg font-semibold text-[var(--text-primary)]">
-                            AURELIUS
+                          {mode === 'chat' ? 'Chat Mode' : 'Voice Mode'}
                         </h1>
-                        <p className="text-xs text-[var(--text-muted)]">
-                            {mode === 'chat' ? 'Chat Mode' : 'Voice Mode'}
-                        </p>
+
                     </div>
                 </div>
                 <Button

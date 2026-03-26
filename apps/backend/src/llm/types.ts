@@ -17,6 +17,7 @@ export interface OpenAIToolParameter {
     type: 'string' | 'number' | 'boolean' | 'object' | 'array';
     description: string;
     enum?: string[];
+    items?: { type: string };
 }
 
 export interface OpenAITool {

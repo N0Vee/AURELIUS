@@ -713,7 +713,8 @@ export async function executeTool(
                 const response = await client.search(query, {
                     searchDepth: 'advanced',
                     maxResults: 5,
-                });
+                    includeRawContent: true as any,
+                }) as any;
 
                 const lines: string[] = [];
 
@@ -723,14 +724,81 @@ export async function executeTool(
 
                 lines.push(`Web search results for "${query}":`);
 
-                for (const result of response.results) {
-                    lines.push(`\nTitle: ${result.title}`);
-                    lines.push(`URL: ${result.url}`);
-                    if (result.content) {
-                        const snippet = result.content.length > 400
-                            ? result.content.slice(0, 400) + '…'
-                            : result.content;
-                        lines.push(`Snippet: ${snippet}`);
+                if (Array.isArray(response?.results)) {
+                    for (const result of response.results) {
+                        lines.push(`\nTitle: ${result.title}`);
+                        lines.push(`URL: ${result.url}`);
+                        if (result.content) {
+                            lines.push(`Snippet: ${result.content}`);
+                        }
+                        if (result.raw_content) {
+                            // Include raw content but cap it so it doesn't overwhelm the context
+                            const raw = result.raw_content.length > 4000
+                                ? result.raw_content.slice(0, 4000) + '…'
+                                : result.raw_content;
+                            lines.push(`Raw Content: ${raw}`);
+                        }
+                    }
+                }
+
+                return lines.join('\n');
+            }
+
+            case 'web_extract': {
+                const urls = args.urls;
+                if (!Array.isArray(urls) || urls.length === 0) return 'Error: No urls provided.';
+
+                const settings = getSettings();
+                if (!settings.tavilyApiKey) {
+                    return 'Error: Tavily API key is not configured. Go to Settings > Tools & Integrations to add it.';
+                }
+
+                const client = tavily({ apiKey: settings.tavilyApiKey });
+                const response = await client.extract(urls) as any;
+
+                const lines: string[] = [];
+                lines.push(`Web extraction results:`);
+                if (Array.isArray(response?.results)) {
+                    for (const result of response.results) {
+                        lines.push(`\nTitle: ${result.title ?? ''}`);
+                        lines.push(`URL: ${result.url ?? ''}`);
+                        if (result.raw_content) {
+                            const raw = result.raw_content.length > 10000
+                                ? result.raw_content.slice(0, 10000) + '…'
+                                : result.raw_content;
+                            lines.push(`Content: ${raw}`);
+                        }
+                    }
+                }
+
+                return lines.join('\n');
+            }
+
+            case 'web_crawl': {
+                const url = String(args.url ?? '').trim();
+                if (!url) return 'Error: No url provided.';
+
+                const settings = getSettings();
+                if (!settings.tavilyApiKey) {
+                    return 'Error: Tavily API key is not configured. Go to Settings > Tools & Integrations to add it.';
+                }
+
+                const client = tavily({ apiKey: settings.tavilyApiKey });
+                const response = await client.crawl(url, {
+                    extractDepth: 'advanced'
+                }) as any;
+
+                const lines: string[] = [];
+                lines.push(`Web crawl results for: ${url}`);
+                if (Array.isArray(response?.results)) {
+                    for (const result of response.results) {
+                        lines.push(`\nURL: ${result.url ?? ''}`);
+                        if (result.raw_content) {
+                            const raw = result.raw_content.length > 10000
+                                ? result.raw_content.slice(0, 10000) + '…'
+                                : result.raw_content;
+                            lines.push(`Content: ${raw}`);
+                        }
                     }
                 }
 

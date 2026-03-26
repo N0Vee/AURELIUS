@@ -135,7 +135,7 @@ register({
         type: 'function',
         function: {
             name: 'web_search',
-            description: 'Search the internet for up-to-date information using Tavily. Use this when the user asks you to look something up, find current information, or research a topic online.',
+            description: 'Search the internet for up-to-date information using Tavily. Use this ONLY when you need to find new information or search for a topic. Do NOT use this if the user already provides a specific URL to read or summarize.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -145,6 +145,55 @@ register({
                     },
                 },
                 required: ['query'],
+            },
+        },
+    },
+});
+
+register({
+    name: 'web_extract',
+    displayName: 'Web Extract',
+    description: 'Extract raw content from specific URLs using Tavily',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'web_extract',
+            description: 'Extract raw content from specific URLs. Use this when the user provides specific URLs and asks you to summarize, read, or extract content from them. Prefer this over web_crawl if you only need the content of specific pages.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    urls: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Array of URLs to extract content from.',
+                    },
+                },
+                required: ['urls'],
+            },
+        },
+    },
+});
+
+register({
+    name: 'web_crawl',
+    displayName: 'Web Crawl',
+    description: 'Crawl a specific URL to gather extended information using Tavily',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'web_crawl',
+            description: 'Crawl a specific URL to gather extended information across multiple linked pages within the same domain. Only use this if you need deep exploration of a website. Do not use this if you only need the content of a single page (use web_extract instead).',
+            parameters: {
+                type: 'object',
+                properties: {
+                    url: {
+                        type: 'string',
+                        description: 'The URL to crawl.',
+                    },
+                },
+                required: ['url'],
             },
         },
     },
