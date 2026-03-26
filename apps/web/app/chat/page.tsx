@@ -9,6 +9,7 @@ import { Send, Square, Trash2, MessageSquare, Mic, ArrowUp } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useIsDesktop } from '@/components/layout/DesktopContext';
+import { useDesktopBackend } from '@/hooks/useDesktopBackend';
 
 type Mode = 'chat' | 'voice';
 
@@ -19,6 +20,9 @@ export default function ChatPage() {
     const { messages, isLoading, sendMessage, retryLastMessage, stopGeneration, clearMessages, approveToolCall, rejectToolCall } = useChat();
     const isDesktop = useIsDesktop();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const { isReady: isBackendReady, isChecking: isBackendChecking, status: backendStatus, error: backendError, checkNow } = useDesktopBackend({
+        enabled: isDesktop,
+    });
 
     const handleSubmit = (e: FormEvent | React.KeyboardEvent) => {
         e.preventDefault();
@@ -48,7 +52,7 @@ export default function ChatPage() {
             >
                 {/* ── Top bar (only shows when has messages) ─────── */}
                 <AnimatePresence>
-                    {messages.length > 0 && (
+                    {(messages.length > 0 || !isBackendReady) && (
                         <motion.div
                             initial={{ opacity: 0, y: -8 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -83,16 +87,63 @@ export default function ChatPage() {
                                     Voice
                                 </button>
                             </div>
-                            <button
-                                onClick={clearMessages}
-                                className="flex items-center gap-1 text-xs transition-colors"
-                                style={{ color: 'rgba(255,255,255,0.2)' }}
-                                onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.5)')}
-                                onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.2)')}
-                            >
-                                <Trash2 size={11} />
-                                Clear
-                            </button>
+                            {!isBackendReady ? (
+                                <div
+                                    className="flex items-center gap-2 text-xs"
+                                    style={{ color: backendStatus === 'error' ? 'rgba(239,68,68,0.85)' : 'rgba(255,255,255,0.45)' }}
+                                >
+                                    <span
+                                        className="inline-block rounded-full"
+                                        style={{
+                                            width: '7px',
+                                            height: '7px',
+                                            background:
+                                                backendStatus === 'ready'
+                                                    ? 'rgba(34,197,94,0.95)'
+                                                    : backendStatus === 'error'
+                                                        ? 'rgba(239,68,68,0.95)'
+                                                        : 'rgba(245,158,11,0.95)',
+                                            boxShadow:
+                                                backendStatus === 'ready'
+                                                    ? '0 0 10px rgba(34,197,94,0.4)'
+                                                    : backendStatus === 'error'
+                                                        ? '0 0 10px rgba(239,68,68,0.35)'
+                                                        : '0 0 10px rgba(245,158,11,0.35)',
+                                        }}
+                                    />
+                                    <span>
+                                        {backendStatus === 'error'
+                                            ? 'Backend offline'
+                                            : isBackendChecking
+                                                ? 'Starting backend…'
+                                                : 'Checking backend…'}
+                                    </span>
+                                    {backendStatus === 'error' && (
+                                        <button
+                                            onClick={() => { void checkNow(); }}
+                                            className="rounded-full px-2 py-0.5 transition-all"
+                                            style={{
+                                                background: 'rgba(255,255,255,0.05)',
+                                                border: '1px solid rgba(255,255,255,0.08)',
+                                                color: 'rgba(255,255,255,0.65)',
+                                            }}
+                                        >
+                                            Retry
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={clearMessages}
+                                    className="flex items-center gap-1 text-xs transition-colors"
+                                    style={{ color: 'rgba(255,255,255,0.2)' }}
+                                    onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.5)')}
+                                    onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.2)')}
+                                >
+                                    <Trash2 size={11} />
+                                    Clear
+                                </button>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -139,44 +190,103 @@ export default function ChatPage() {
                                             transition={{ delay: 0.2 }}
                                         >
                                             <p className="text-sm font-medium mb-1" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                                                How can I help you?
+                                                {isBackendReady ? 'How can I help you?' : 'Preparing AURELIUS…'}
                                             </p>
-                                            <p className="text-xs mb-6" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                                            <p className="text-xs mb-2" style={{ color: 'rgba(255,255,255,0.25)' }}>
                                                 Ctrl+Shift+Space to hide
                                             </p>
+                                            {!isBackendReady && (
+                                                <div className="mb-6 flex flex-col items-center gap-2">
+                                                    <div
+                                                        className="flex items-center gap-2 rounded-full px-3 py-1.5"
+                                                        style={{
+                                                            background: backendStatus === 'error'
+                                                                ? 'rgba(239,68,68,0.08)'
+                                                                : 'rgba(245,158,11,0.08)',
+                                                            border: backendStatus === 'error'
+                                                                ? '1px solid rgba(239,68,68,0.15)'
+                                                                : '1px solid rgba(245,158,11,0.15)',
+                                                            color: backendStatus === 'error'
+                                                                ? 'rgba(239,68,68,0.9)'
+                                                                : 'rgba(245,158,11,0.9)',
+                                                        }}
+                                                    >
+                                                        <span
+                                                            className="inline-block rounded-full"
+                                                            style={{
+                                                                width: '7px',
+                                                                height: '7px',
+                                                                background: backendStatus === 'error'
+                                                                    ? 'rgba(239,68,68,0.95)'
+                                                                    : 'rgba(245,158,11,0.95)',
+                                                                boxShadow: backendStatus === 'error'
+                                                                    ? '0 0 10px rgba(239,68,68,0.35)'
+                                                                    : '0 0 10px rgba(245,158,11,0.35)',
+                                                            }}
+                                                        />
+                                                        <span className="text-xs font-medium">
+                                                            {backendStatus === 'error'
+                                                                ? 'Backend failed to start'
+                                                                : isBackendChecking
+                                                                    ? 'Starting local backend…'
+                                                                    : 'Checking backend…'}
+                                                        </span>
+                                                    </div>
+                                                    {backendError && (
+                                                        <p className="max-w-xs text-[11px]" style={{ color: 'rgba(255,255,255,0.22)' }}>
+                                                            {backendError}
+                                                        </p>
+                                                    )}
+                                                    {backendStatus === 'error' && (
+                                                        <button
+                                                            onClick={() => { void checkNow(); }}
+                                                            className="px-3 py-1.5 rounded-full text-xs transition-all"
+                                                            style={{
+                                                                background: 'rgba(255,255,255,0.04)',
+                                                                border: '1px solid rgba(255,255,255,0.08)',
+                                                                color: 'rgba(255,255,255,0.65)',
+                                                            }}
+                                                        >
+                                                            Retry backend
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
                                         </motion.div>
 
-                                        <motion.div
-                                            initial={{ opacity: 0, y: 8 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            transition={{ delay: 0.3 }}
-                                            className="flex flex-wrap gap-2 justify-center max-w-xs"
-                                        >
-                                            {['What time is it?', 'Search the web', 'Open Notepad', 'Take a screenshot'].map((s) => (
-                                                <button
-                                                    key={s}
-                                                    onClick={() => { setInput(s); textareaRef.current?.focus(); }}
-                                                    className="px-3 py-1.5 rounded-full text-xs transition-all"
-                                                    style={{
-                                                        background: 'rgba(255,255,255,0.04)',
-                                                        border: '1px solid rgba(255,255,255,0.08)',
-                                                        color: 'rgba(255,255,255,0.4)',
-                                                    }}
-                                                    onMouseEnter={e => {
-                                                        e.currentTarget.style.background = 'rgba(245,158,11,0.08)';
-                                                        e.currentTarget.style.borderColor = 'rgba(245,158,11,0.2)';
-                                                        e.currentTarget.style.color = 'rgba(245,158,11,0.8)';
-                                                    }}
-                                                    onMouseLeave={e => {
-                                                        e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                                                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
-                                                        e.currentTarget.style.color = 'rgba(255,255,255,0.4)';
-                                                    }}
-                                                >
-                                                    {s}
-                                                </button>
-                                            ))}
-                                        </motion.div>
+                                        {isBackendReady && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 8 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                transition={{ delay: 0.3 }}
+                                                className="flex flex-wrap gap-2 justify-center max-w-xs"
+                                            >
+                                                {['What time is it?', 'Search the web', 'Open Notepad', 'Take a screenshot'].map((s) => (
+                                                    <button
+                                                        key={s}
+                                                        onClick={() => { setInput(s); textareaRef.current?.focus(); }}
+                                                        className="px-3 py-1.5 rounded-full text-xs transition-all"
+                                                        style={{
+                                                            background: 'rgba(255,255,255,0.04)',
+                                                            border: '1px solid rgba(255,255,255,0.08)',
+                                                            color: 'rgba(255,255,255,0.4)',
+                                                        }}
+                                                        onMouseEnter={e => {
+                                                            e.currentTarget.style.background = 'rgba(245,158,11,0.08)';
+                                                            e.currentTarget.style.borderColor = 'rgba(245,158,11,0.2)';
+                                                            e.currentTarget.style.color = 'rgba(245,158,11,0.8)';
+                                                        }}
+                                                        onMouseLeave={e => {
+                                                            e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                                                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+                                                            e.currentTarget.style.color = 'rgba(255,255,255,0.4)';
+                                                        }}
+                                                    >
+                                                        {s}
+                                                    </button>
+                                                ))}
+                                            </motion.div>
+                                        )}
                                     </div>
                                 ) : (
                                     <ChatWindow
@@ -225,8 +335,8 @@ export default function ChatPage() {
                                         handleSubmit(e);
                                     }
                                 }}
-                                placeholder="Ask AURELIUS anything..."
-                                disabled={isLoading}
+                                placeholder={isBackendReady ? 'Ask AURELIUS anything...' : 'Waiting for backend...'}
+                                disabled={isLoading || !isBackendReady}
                                 rows={1}
                                 className="flex-1 bg-transparent resize-none focus:outline-none text-sm leading-relaxed"
                                 style={{
@@ -267,7 +377,7 @@ export default function ChatPage() {
                                         transition={{ duration: 0.12 }}
                                         type="button"
                                         onClick={handleSubmit}
-                                        disabled={!input.trim()}
+                                        disabled={!input.trim() || !isBackendReady}
                                         className="flex items-center justify-center rounded-xl shrink-0 transition-all"
                                         style={{
                                             width: '32px',
@@ -287,7 +397,7 @@ export default function ChatPage() {
                             className="text-center mt-1.5 text-xs"
                             style={{ color: 'rgba(255,255,255,0.12)' }}
                         >
-                            ↵ send · shift+↵ newline
+                            {isBackendReady ? '↵ send · shift+↵ newline' : 'starting local backend…'}
                         </p>
                     </div>
                 )}

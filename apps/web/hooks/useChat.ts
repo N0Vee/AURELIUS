@@ -42,11 +42,16 @@ export type Message = ChatMessage | ToolConfirmMessage | ToolAutoMessage;
 // Constants
 // ============================================================
 
-const API_BASE        = 'http://localhost:3001';
-const CHAT_STREAM_URL = `${API_BASE}/chat/stream`;
+const API_BASES = [
+    'http://127.0.0.1:3001',
+    'http://localhost:3001',
+];
 
-function approveUrl(pendingId: string) { return `${API_BASE}/api/tools/${pendingId}/approve`; }
-function rejectUrl (pendingId: string) { return `${API_BASE}/api/tools/${pendingId}/reject`;  }
+const CHAT_STREAM_PATH = '/chat/stream';
+
+function chatStreamUrl(base: string) { return `${base}${CHAT_STREAM_PATH}`; }
+function approveUrl(base: string, pendingId: string) { return `${base}/api/tools/${pendingId}/approve`; }
+function rejectUrl (base: string, pendingId: string) { return `${base}/api/tools/${pendingId}/reject`;  }
 
 // ============================================================
 // Error formatter
@@ -79,15 +84,17 @@ interface UseChatOptions {
 }
 
 export function useChat(options: UseChatOptions = {}) {
-    const { apiUrl = CHAT_STREAM_URL } = options;
+    const { apiUrl } = options;
 
     const [messages, setMessages]   = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError]         = useState<Error | null>(null);
 
     const abortControllerRef   = useRef<AbortController | null>(null);
+    const streamActiveRef      = useRef(false);
     const lastHistoryRef       = useRef<Array<{ role: string; content: string }>>([]);
     const lastAssistantIdRef   = useRef<string>('');
+    const activeApiBaseRef     = useRef<string>(API_BASES[0]);
 
     // ----------------------------------------------------------
     // Core stream runner
@@ -105,17 +112,50 @@ export function useChat(options: UseChatOptions = {}) {
             let fullContent = '';
 
             try {
-                abortControllerRef.current?.abort();
+                if (streamActiveRef.current) {
+                    abortControllerRef.current?.abort();
+                }
                 abortControllerRef.current = new AbortController();
+                streamActiveRef.current = true;
 
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ messages: history }),
-                    signal: abortControllerRef.current.signal,
-                });
+                const streamUrls = apiUrl
+                    ? [apiUrl]
+                    : [
+                        chatStreamUrl(activeApiBaseRef.current),
+                        ...API_BASES
+                            .filter(base => base !== activeApiBaseRef.current)
+                            .map(base => chatStreamUrl(base)),
+                    ];
 
-                if (!response.ok) throw new Error(`Chat error: ${response.status}`);
+                let response: Response | null = null;
+                let lastFetchError: unknown = null;
+
+                for (const url of streamUrls) {
+                    try {
+                        response = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ messages: history }),
+                            signal: abortControllerRef.current.signal,
+                        });
+
+                        if (response.ok) {
+                            if (!apiUrl) {
+                                const matchedBase = API_BASES.find(base => url.startsWith(base));
+                                if (matchedBase) activeApiBaseRef.current = matchedBase;
+                            }
+                            break;
+                        }
+
+                        lastFetchError = new Error(`Chat error: ${response.status}`);
+                    } catch (err) {
+                        lastFetchError = err;
+                    }
+                }
+
+                if (!response?.ok) {
+                    throw (lastFetchError instanceof Error ? lastFetchError : new Error('Chat backend unavailable'));
+                }
 
                 const reader = response.body?.getReader();
                 if (!reader) throw new Error('No response body');
@@ -244,7 +284,19 @@ export function useChat(options: UseChatOptions = {}) {
                     }
                 }
             } catch (err) {
-                if (err instanceof Error && err.name !== 'AbortError') {
+                if (err instanceof Error && err.name === 'AbortError') {
+                    setMessages(prev =>
+                        prev.map(m =>
+                            m.id === assistantMsgId && m.role === 'assistant'
+                                ? {
+                                    ...m,
+                                    content: fullContent || m.content,
+                                    isStreaming: false,
+                                }
+                                : m,
+                        ),
+                    );
+                } else if (err instanceof Error) {
                     const friendly = formatError(err.message);
                     setError(new Error(friendly));
                     setMessages(prev =>
@@ -256,6 +308,7 @@ export function useChat(options: UseChatOptions = {}) {
                     );
                 }
             } finally {
+                streamActiveRef.current = false;
                 setIsLoading(false);
             }
         },
@@ -335,7 +388,22 @@ export function useChat(options: UseChatOptions = {}) {
         );
 
         try {
-            const res = await fetch(approveUrl(pendingId), { method: 'POST' });
+            const bases = [activeApiBaseRef.current, ...API_BASES.filter(base => base !== activeApiBaseRef.current)];
+
+            let res: Response | null = null;
+            for (const base of bases) {
+                try {
+                    res = await fetch(approveUrl(base, pendingId), { method: 'POST' });
+                    if (res.ok) {
+                        activeApiBaseRef.current = base;
+                        break;
+                    }
+                } catch {
+                    // try next base
+                }
+            }
+
+            if (!res?.ok) throw new Error(`Approve failed: ${res?.status ?? 'unreachable'}`);
             if (!res.ok) throw new Error(`Approve failed: ${res.status}`);
         } catch {
             setMessages(prev =>
@@ -361,7 +429,22 @@ export function useChat(options: UseChatOptions = {}) {
         );
 
         try {
-            const res = await fetch(rejectUrl(pendingId), { method: 'POST' });
+            const bases = [activeApiBaseRef.current, ...API_BASES.filter(base => base !== activeApiBaseRef.current)];
+
+            let res: Response | null = null;
+            for (const base of bases) {
+                try {
+                    res = await fetch(rejectUrl(base, pendingId), { method: 'POST' });
+                    if (res.ok) {
+                        activeApiBaseRef.current = base;
+                        break;
+                    }
+                } catch {
+                    // try next base
+                }
+            }
+
+            if (!res?.ok) throw new Error(`Reject failed: ${res?.status ?? 'unreachable'}`);
             if (!res.ok) throw new Error(`Reject failed: ${res.status}`);
         } catch {
             setMessages(prev =>
@@ -378,7 +461,10 @@ export function useChat(options: UseChatOptions = {}) {
     // Stop generation
     // ----------------------------------------------------------
     const stopGeneration = useCallback(() => {
-        abortControllerRef.current?.abort();
+        if (streamActiveRef.current) {
+            abortControllerRef.current?.abort();
+        }
+        streamActiveRef.current = false;
         setIsLoading(false);
         setMessages(prev =>
             prev.map(m =>
