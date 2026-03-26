@@ -1,5 +1,6 @@
 import { getSettings } from '../config/settings.store';
 import type { ChatMessage } from '@aurelius/shared-schema';
+import type { LLMStreamEvent, OpenAITool } from './types';
 
 import {
     streamChatCompletion as ollamaStream,
@@ -12,7 +13,7 @@ import {
 } from './openrouter.client';
 
 /**
- * Active provider label for the server startup banner and logs.
+ * Active provider label for the server startup banner.
  * Reads from the live settings store so it reflects runtime changes.
  */
 export function getActiveProviderLabel(): string {
@@ -33,20 +34,21 @@ export function getActiveProviderLabel(): string {
  *   - 'openrouter'  → OpenRouter cloud API (requires openrouterApiKey in settings)
  */
 export async function* streamChatCompletion(
-    messages: ChatMessage[]
-): AsyncGenerator<string, void, unknown> {
+    messages: ChatMessage[],
+    tools?: OpenAITool[],
+): AsyncGenerator<LLMStreamEvent, void, unknown> {
     const { llmProvider } = getSettings();
 
     switch (llmProvider) {
         case 'openrouter':
             console.log('[Provider] Routing to → OpenRouter');
-            yield* openRouterStream(messages);
+            yield* openRouterStream(messages, tools);
             break;
 
         case 'ollama':
         default:
             console.log('[Provider] Routing to → Ollama');
-            yield* ollamaStream(messages);
+            yield* ollamaStream(messages, tools);
             break;
     }
 }
@@ -54,15 +56,18 @@ export async function* streamChatCompletion(
 /**
  * Non-streaming chat completion — routes to the configured LLM provider.
  */
-export async function chatCompletion(messages: ChatMessage[]): Promise<string> {
+export async function chatCompletion(
+    messages: ChatMessage[],
+    tools?: OpenAITool[],
+): Promise<string> {
     const { llmProvider } = getSettings();
 
     switch (llmProvider) {
         case 'openrouter':
-            return openRouterChat(messages);
+            return openRouterChat(messages, tools);
 
         case 'ollama':
         default:
-            return ollamaChat(messages);
+            return ollamaChat(messages, tools);
     }
 }

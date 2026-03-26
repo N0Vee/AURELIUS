@@ -4,17 +4,13 @@ import {
     ToolCallSchema,
     MessageRoleSchema,
 } from '../chat.schema';
+import { PermissionLevelSchema, PendingToolCallSchema } from '../tool.schema';
 import {
     AudioChunkSchema,
     AudioSessionSchema,
     VADEventSchema,
     TranscriptionSchema,
 } from '../audio.schema';
-import {
-    ToolResultSchema,
-    ToolDefinitionSchema,
-    PermissionLevel,
-} from '../tool.schema';
 
 describe('ChatMessageSchema', () => {
     test('validates a complete message', () => {
@@ -29,21 +25,6 @@ describe('ChatMessageSchema', () => {
         expect(result.content).toBe('Hello, AURELIUS!');
         expect(result.id).toBeDefined();
         expect(result.timestamp).toBeDefined();
-    });
-
-    test('validates assistant message with tool calls', () => {
-        const message = {
-            role: 'assistant',
-            content: 'Let me check the time for you.',
-            tool_calls: [
-                { id: 'call_1', name: 'get_time', arguments: '{}' }
-            ],
-        };
-
-        const result = ChatMessageSchema.parse(message);
-
-        expect(result.tool_calls).toHaveLength(1);
-        expect(result.tool_calls![0].name).toBe('get_time');
     });
 
     test('rejects invalid role', () => {
@@ -70,45 +51,70 @@ describe('MessageRoleSchema', () => {
 });
 
 describe('ToolCallSchema', () => {
-    test('validates tool call structure', () => {
-        const toolCall = {
+    test('validates a tool call in OpenAI format', () => {
+        const tc = {
             id: 'call_abc123',
-            name: 'get_weather',
-            arguments: '{"city": "Bangkok"}',
+            type: 'function',
+            function: { name: 'get_time', arguments: '{}' },
         };
+        const result = ToolCallSchema.parse(tc);
+        expect(result.id).toBe('call_abc123');
+        expect(result.function.name).toBe('get_time');
+    });
 
-        const result = ToolCallSchema.parse(toolCall);
-
-        expect(result.name).toBe('get_weather');
-        expect(JSON.parse(result.arguments)).toEqual({ city: 'Bangkok' });
+    test('rejects wrong type literal', () => {
+        expect(() => ToolCallSchema.parse({
+            id: 'x', type: 'tool', function: { name: 'f', arguments: '{}' },
+        })).toThrow();
     });
 });
 
-describe('ToolResultSchema', () => {
-    test('validates successful tool result', () => {
-        const result = {
-            tool_call_id: 'call_abc123',
-            name: 'get_weather',
-            result: { temp: 32, condition: 'sunny' },
+describe('ChatMessageSchema — tool messages', () => {
+    test('validates assistant message with tool_calls', () => {
+        const msg = {
+            role: 'assistant',
+            content: '',
+            tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'get_time', arguments: '{}' } }],
         };
-
-        const parsed = ToolResultSchema.parse(result);
-
-        expect(parsed.isError).toBe(false);
-        expect(parsed.result.temp).toBe(32);
+        const result = ChatMessageSchema.parse(msg);
+        expect(result.tool_calls).toHaveLength(1);
+        expect(result.tool_calls![0].function.name).toBe('get_time');
     });
 
-    test('validates error tool result', () => {
-        const result = {
-            tool_call_id: 'call_abc123',
-            name: 'get_weather',
-            result: null,
-            isError: true,
+    test('validates tool result message', () => {
+        const msg = { role: 'tool', content: '12:30 PM', tool_call_id: 'call_1' };
+        const result = ChatMessageSchema.parse(msg);
+        expect(result.role).toBe('tool');
+        expect(result.tool_call_id).toBe('call_1');
+    });
+});
+
+describe('PermissionLevelSchema', () => {
+    test('accepts valid levels', () => {
+        expect(PermissionLevelSchema.parse('SAFE')).toBe('SAFE');
+        expect(PermissionLevelSchema.parse('SENSITIVE')).toBe('SENSITIVE');
+        expect(PermissionLevelSchema.parse('DANGEROUS')).toBe('DANGEROUS');
+    });
+
+    test('rejects invalid level', () => {
+        expect(() => PermissionLevelSchema.parse('UNKNOWN')).toThrow();
+    });
+});
+
+describe('PendingToolCallSchema', () => {
+    test('validates a pending tool call', () => {
+        const pending = {
+            id: crypto.randomUUID(),
+            toolName: 'open_app',
+            displayName: 'Open Application',
+            description: 'Opens a Windows app',
+            permissionLevel: 'DANGEROUS',
+            args: { app: 'notepad' },
         };
-
-        const parsed = ToolResultSchema.parse(result);
-
-        expect(parsed.isError).toBe(true);
+        const result = PendingToolCallSchema.parse(pending);
+        expect(result.permissionLevel).toBe('DANGEROUS');
+        expect(result.args).toEqual({ app: 'notepad' });
+        expect(result.timestamp).toBeDefined();
     });
 });
 

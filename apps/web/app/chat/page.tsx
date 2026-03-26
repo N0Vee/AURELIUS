@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent, useCallback, useEffect, useRef } from 'react';
+import { useState, FormEvent } from 'react';
 import { useChat } from '@/hooks/useChat';
 import { ChatWindow } from './components/ChatWindow';
 import { VoiceVisual } from './components/VoiceVisual';
@@ -15,7 +15,7 @@ export default function ChatPage() {
     const [mode, setMode] = useState<Mode>('chat');
     const [input, setInput] = useState('');
     const [language, setLanguage] = useState<'th' | 'en'>('th');
-    const { messages, isLoading, sendMessage, stopGeneration, clearMessages } = useChat();
+    const { messages, isLoading, sendMessage, retryLastMessage, stopGeneration, clearMessages, approveToolCall, rejectToolCall } = useChat();
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
@@ -63,9 +63,14 @@ export default function ChatPage() {
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -20 }}
                         transition={{ duration: 0.2 }}
-                        className="flex-1 min-h-0 overflow-y-auto pb-40"
+                        className="flex-1 min-h-0 overflow-y-auto pb-56"
                     >
-                        <ChatWindow messages={messages} />
+                        <ChatWindow
+                            messages={messages}
+                            onApproveToolCall={approveToolCall}
+                            onRejectToolCall={rejectToolCall}
+                            onRetry={retryLastMessage}
+                        />
                     </motion.div>
                 ) : (
                     <motion.div

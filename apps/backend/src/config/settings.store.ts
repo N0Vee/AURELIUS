@@ -35,14 +35,24 @@ export const SettingsSchema = z.object({
     systemPrompt: z.string(),
     temperature: z.number().min(0).max(2),
     maxTokens: z.number().int().min(1).max(32768),
+
+    // Tools
+    tavilyApiKey: z.string(),
+    screenshotSavePath: z.string(),
+    defaultFileRoot: z.string(),
+    allowedReadRoots: z.array(z.string()),
+    allowedWriteRoot: z.string(),
+    appSearchRoots: z.array(z.string()),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
 
-/** Settings shape returned to the client — API key is masked */
-export type PublicSettings = Omit<Settings, 'openrouterApiKey'> & {
+/** Settings shape returned to the client — API keys are masked */
+export type PublicSettings = Omit<Settings, 'openrouterApiKey' | 'tavilyApiKey'> & {
     openrouterApiKey: string;      // '***' when set, '' when not set
     openrouterApiKeySet: boolean;
+    tavilyApiKey: string;          // '***' when set, '' when not set
+    tavilyApiKeySet: boolean;
 };
 
 // ============================================================
@@ -63,6 +73,23 @@ function envDefaults(): Settings {
         systemPrompt: CONSTANTS.SYSTEM_PROMPT,
         temperature: CONSTANTS.TEMPERATURE,
         maxTokens: CONSTANTS.MAX_TOKENS,
+        tavilyApiKey: env.TAVILY_API_KEY ?? '',
+        screenshotSavePath: 'C:\\Users\\UsEr\\Pictures\\AURELIUS',
+        defaultFileRoot: 'C:\\Users\\UsEr\\Documents',
+        allowedReadRoots: [
+            'C:\\Users\\UsEr\\Desktop',
+            'C:\\Users\\UsEr\\Documents',
+            'C:\\Users\\UsEr\\Downloads',
+            'C:\\Users\\UsEr\\Pictures',
+            'C:\\Users\\UsEr\\Videos',
+        ],
+        allowedWriteRoot: 'C:\\Users\\UsEr\\Documents\\AURELIUS',
+        appSearchRoots: [
+            'C:\\Program Files',
+            'C:\\Program Files (x86)',
+            'C:\\Users\\UsEr\\AppData\\Local',
+            'C:\\Users\\UsEr\\AppData\\Roaming',
+        ],
     };
 }
 
@@ -124,6 +151,12 @@ export async function updateSettings(partial: Partial<Settings>): Promise<Settin
         partial = rest;
     }
 
+    if ('tavilyApiKey' in partial && partial.tavilyApiKey === '***') {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { tavilyApiKey: _ignored, ...rest } = partial;
+        partial = rest;
+    }
+
     _settings = { ..._settings, ...partial };
 
     await Bun.write(SETTINGS_FILE, JSON.stringify(_settings, null, 2));
@@ -142,5 +175,12 @@ export function getPublicSettings(): PublicSettings {
         ...s,
         openrouterApiKey: s.openrouterApiKey ? '***' : '',
         openrouterApiKeySet: Boolean(s.openrouterApiKey),
+        tavilyApiKey: s.tavilyApiKey ? '***' : '',
+        tavilyApiKeySet: Boolean(s.tavilyApiKey),
+        screenshotSavePath: s.screenshotSavePath,
+        defaultFileRoot: s.defaultFileRoot,
+        allowedReadRoots: s.allowedReadRoots,
+        allowedWriteRoot: s.allowedWriteRoot,
+        appSearchRoots: s.appSearchRoots,
     };
 }

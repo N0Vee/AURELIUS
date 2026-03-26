@@ -4,6 +4,7 @@ import { env } from './config/env';
 import { initSettings } from './config/settings.store';
 import { chatStreamRoute } from './sse/chat.stream';
 import { settingsRoute } from './routes/settings.route';
+import { toolsRoute } from './routes/tools.route';
 import { getSystemStats } from './debug/hardware';
 import { getActiveProviderLabel } from './llm/provider';
 
@@ -42,6 +43,9 @@ const app = new Elysia()
 
     // Settings CRUD + connection test
     .use(settingsRoute)
+
+    // Tool confirmation (approve / reject)
+    .use(toolsRoute)
 
     // Chat routes
     .use(chatStreamRoute)

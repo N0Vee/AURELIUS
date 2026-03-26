@@ -22,6 +22,9 @@ const envSchema = z.object({
     // Audio Engine (Phase 2)
     AUDIO_ENGINE_URL: z.string().default('ws://localhost:8000/ws'),
 
+    // Tavily Web Search
+    TAVILY_API_KEY: z.string().optional(),
+
     // CORS
     CORS_ORIGIN: z.string().default('http://localhost:3000'),
 });

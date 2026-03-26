@@ -27,6 +27,15 @@ export interface Settings {
     // Audio
     audioEngineUrl: string;
 
+    // Tools
+    tavilyApiKey: string;        // '***' when set, '' when not set
+    tavilyApiKeySet: boolean;    // true when a key exists on the server
+    screenshotSavePath: string;
+    defaultFileRoot: string;
+    allowedReadRoots: string[];
+    allowedWriteRoot: string;
+    appSearchRoots: string[];
+
     // Prompt & Model Behavior
     systemPrompt: string;
     temperature: number;

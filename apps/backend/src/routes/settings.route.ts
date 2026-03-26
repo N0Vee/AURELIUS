@@ -39,6 +39,15 @@ export const settingsRoute = new Elysia({ prefix: '/api/settings' })
                 openrouterSiteName: t.Optional(t.String()),
                 corsOrigin:         t.Optional(t.String()),
                 audioEngineUrl:     t.Optional(t.String()),
+                tavilyApiKey:       t.Optional(t.String()),
+                screenshotSavePath: t.Optional(t.String()),
+                defaultFileRoot:    t.Optional(t.String()),
+                allowedReadRoots:   t.Optional(t.Array(t.String())),
+                allowedWriteRoot:   t.Optional(t.String()),
+                appSearchRoots:     t.Optional(t.Array(t.String())),
+                systemPrompt:       t.Optional(t.String()),
+                temperature:        t.Optional(t.Number()),
+                maxTokens:          t.Optional(t.Number()),
             }),
         }
     )

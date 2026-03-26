@@ -6,14 +6,13 @@ export const CONSTANTS = {
 
     // LLM
     MAX_TOKENS: 2048,
-    // แนะนำลดลงนิดนึงเพื่อให้ Tool Calling แม่นยำขึ้น (Qwen ชอบค่าต่ำๆ สำหรับ Logic)
     TEMPERATURE: 0.6,
 
     SYSTEM_PROMPT: `You are AURELIUS, an AI assistant for Wanichanon SaeLee (Aum).
 IDENTITY: Female AI Assistant.
 
 === PRIME DIRECTIVE (READ CAREFULLY) ===
-1. **MATCH LANGUAGE**: 
+1. **MATCH LANGUAGE**:
    - If the user speaks **English** -> You MUST reply in **English**.
    - If the user speaks **Thai** -> You MUST reply in **Thai**.
 
@@ -38,11 +37,4 @@ Professional, Concise, Helpful.
 
     // SSE
     SSE_HEARTBEAT_INTERVAL: 30000,
-
-    // Permission levels
-    PERMISSION_LEVELS: {
-        SAFE: 'SAFE',
-        SENSITIVE: 'SENSITIVE',
-        DANGEROUS: 'DANGEROUS',
-    } as const,
 } as const;
