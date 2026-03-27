@@ -9,7 +9,10 @@
     "dev:audio": "cd services/audio-engine && uv run python main.py",
     "audio:setup": "cd services/audio-engine && uv add -r requirements.txt",
     "build": "bun run --filter '*' build",
-    "lint": "bun run --filter '*' lint"
+    "lint": "bun run --filter '*' lint",
+    "build:sidecar": "bun build --compile --outfile apps/web/src-tauri/binaries/backend-server-x86_64-pc-windows-msvc apps/backend/src/server.ts",
+    "dev:desktop": "powershell -ExecutionPolicy Bypass -File scripts/dev-desktop.ps1",
+    "build:desktop": "powershell -ExecutionPolicy Bypass -File scripts/build-desktop.ps1"
   },
   "workspaces": [
     "apps/*",
