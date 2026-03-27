@@ -31,6 +31,7 @@ import {
     Image as ImageIcon,
     FolderOpen,
     HardDrive,
+    Layers,
 } from 'lucide-react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
@@ -226,7 +227,7 @@ export default function SettingsPage() {
     const openrouterActive = form.llmProvider === 'openrouter';
 
     return (
-        <div className="min-h-screen py-8">
+        <div className="h-full overflow-y-auto py-8">
             <Container>
 
                 {/* ── Page Header ──────────────────────────────── */}
@@ -370,6 +371,58 @@ export default function SettingsPage() {
                                     <Badge variant="sensitive" className="mt-1">API Key Required</Badge>
                                 </button>
 
+                            </div>
+                        </CardContent>
+                    </Card>
+                </section>
+
+                {/* ── Appearance ─────────────────────────────── */}
+                <section className="mb-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Layers size={18} className="text-[var(--accent)]" />
+                                Appearance
+                            </CardTitle>
+                            <CardDescription>
+                                Customize the visual look of the Aurelius desktop application.
+                                These settings apply instantly.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="max-w-md space-y-4">
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <FieldLabel>
+                                            <span className="flex items-center gap-2">
+                                                Window Opacity
+                                            </span>
+                                        </FieldLabel>
+                                        <Badge variant="default" className="font-mono text-[var(--accent)]">
+                                            {Math.round((form.opacity || 0.72) * 100)}%
+                                        </Badge>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="0.05"
+                                        max="1"
+                                        step="0.01"
+                                        value={form.opacity || 0.72}
+                                        onChange={e => update('opacity', parseFloat(e.target.value))}
+                                        className="w-full h-2 rounded-full appearance-none cursor-pointer bg-[var(--surface)]"
+                                        style={{
+                                            background: `linear-gradient(to right, var(--accent) 0%, var(--accent) ${(((form.opacity || 0.72) - 0.05) / (1 - 0.05)) * 100}%, var(--surface) ${(((form.opacity || 0.72) - 0.05) / (1 - 0.05)) * 100}%, var(--surface) 100%)`,
+                                        }}
+                                    />
+                                    <div className="flex justify-between text-[10px] text-[var(--text-muted)]">
+                                        <span>Transparent</span>
+                                        <span>Solid</span>
+                                    </div>
+                                    <FieldHint>
+                                        Adjust the transparency of the glass background. 
+                                        This setting is only used in the desktop app.
+                                    </FieldHint>
+                                </div>
                             </div>
                         </CardContent>
                     </Card>

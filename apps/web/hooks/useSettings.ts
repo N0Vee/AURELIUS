@@ -40,6 +40,7 @@ export interface Settings {
     systemPrompt: string;
     temperature: number;
     maxTokens: number;
+    opacity: number;
 }
 
 export interface TestResult {

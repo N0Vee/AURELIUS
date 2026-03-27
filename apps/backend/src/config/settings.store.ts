@@ -100,7 +100,8 @@ export const SettingsSchema = z.object({
     corsOrigin: z.string().min(1),
 
     // Audio Engine (Phase 2)
-    audioEngineUrl: z.string(),
+    audioEngineUrl: z.string().url().default('ws://localhost:8000/ws'),
+    opacity: z.number().min(0.05).max(1).default(0.72),
 
     // Prompt & Model Behavior
     systemPrompt: z.string(),
@@ -141,7 +142,8 @@ function envDefaults(): Settings {
         openrouterSiteUrl: env.OPENROUTER_SITE_URL,
         openrouterSiteName: env.OPENROUTER_SITE_NAME,
         corsOrigin: env.CORS_ORIGIN,
-        audioEngineUrl: env.AUDIO_ENGINE_URL,
+        audioEngineUrl: process.env.AUDIO_ENGINE_URL || 'ws://localhost:8000/ws',
+        opacity: 0.72,
         systemPrompt: CONSTANTS.SYSTEM_PROMPT,
         temperature: CONSTANTS.TEMPERATURE,
         maxTokens: CONSTANTS.MAX_TOKENS,

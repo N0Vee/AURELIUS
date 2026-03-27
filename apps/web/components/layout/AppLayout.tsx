@@ -3,12 +3,18 @@
 import React, { useEffect, useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { DesktopContext } from '@/components/layout/DesktopContext';
-import { useRouter } from 'next/navigation';
-import { X, Minus, GripHorizontal } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useSettings } from '@/hooks/useSettings';
+import { X, Minus, GripHorizontal, Settings as SettingsIcon } from 'lucide-react';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
     const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
     const router = useRouter();
+    const pathname = usePathname();
+    const { settings } = useSettings();
+
+    // Default opacity if settings aren't loaded yet
+    const opacity = settings?.opacity ?? 0.72;
 
     useEffect(() => {
         const checkTauri = () => {
@@ -42,9 +48,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 >
                     {/* ── Floating Panel ─────────────────────────────── */}
                     <div
-                        className="flex flex-col w-full h-full overflow-hidden"
+                        className="flex flex-col w-full h-full overflow-hidden transition-colors duration-300"
                         style={{
-                            background: 'rgba(10, 10, 10, 0.72)',
+                            background: `rgba(10, 10, 10, ${opacity})`,
                             backdropFilter: 'blur(32px)',
                             WebkitBackdropFilter: 'blur(32px)',
                             border: '1px solid rgba(245, 158, 11, 0.12)',
@@ -95,6 +101,24 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
                             {/* Right: Window controls */}
                             <div className="flex items-center gap-1" style={{ cursor: 'default' }}>
+                                <button
+                                    onClick={() => {
+                                        if (pathname === '/settings') {
+                                            router.push('/chat');
+                                        } else {
+                                            router.push('/settings');
+                                        }
+                                    }}
+                                    className="group flex items-center justify-center rounded-full transition-all hover:bg-[var(--accent)] hover:bg-opacity-20"
+                                    style={{
+                                        width: '22px',
+                                        height: '22px',
+                                        background: 'rgba(255,255,255,0.04)',
+                                    }}
+                                    title="Toggle Settings"
+                                >
+                                    <SettingsIcon size={10} style={{ color: 'rgba(255,255,255,0.3)' }} className="group-hover:text-[var(--accent)]" />
+                                </button>
                                 <button
                                     onClick={async () => {
                                         try {
