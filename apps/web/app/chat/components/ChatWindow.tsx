@@ -31,7 +31,7 @@ export function ChatWindow({ messages, onApproveToolCall, onRejectToolCall, onRe
                         Start a Conversation
                     </h2>
                     <p className="text-[var(--text-secondary)] max-w-md mb-6">
-                        AURELIUS is ready to assist. Ask questions, get help with code, or control your system.
+                        Aurelius is ready to assist. Ask questions, get help with code, or control your system.
                     </p>
                     <div className="flex flex-wrap gap-2 justify-center max-w-lg">
                         {['What time is it?', 'Help me with code', 'Open Notepad'].map((suggestion) => (

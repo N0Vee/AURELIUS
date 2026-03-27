@@ -42,23 +42,34 @@ export function useDesktopBackend(
         healthUrl,
         enabled = true,
         pollIntervalMs = 2500,
-        startupTimeoutMs = 20000,
+        startupTimeoutMs = 30000,
     } = options;
 
     const healthUrls = useMemo(
-        () => healthUrl ? [healthUrl, ...DEFAULT_HEALTH_URLS.filter(url => url !== healthUrl)] : DEFAULT_HEALTH_URLS,
+        () =>
+            healthUrl
+                ? [healthUrl, ...DEFAULT_HEALTH_URLS.filter((url) => url !== healthUrl)]
+                : DEFAULT_HEALTH_URLS,
         [healthUrl],
     );
 
     const isDesktop = useMemo(() => detectDesktop(), []);
+
     const [status, setStatus] = useState<DesktopBackendStatus>(
         isDesktop && enabled ? 'checking' : 'unknown',
     );
     const [error, setError] = useState<string | null>(null);
 
+    // Use refs for values that checkNow reads but should NOT trigger re-creation
     const mountedRef = useRef(true);
     const checkingRef = useRef(false);
     const startTimeRef = useRef<number | null>(null);
+    const statusRef = useRef(status);
+
+    // Keep statusRef in sync
+    useEffect(() => {
+        statusRef.current = status;
+    }, [status]);
 
     const checkUrl = useCallback(async (url: string) => {
         const controller = new AbortController();
@@ -70,16 +81,19 @@ export function useDesktopBackend(
                 cache: 'no-store',
                 signal: controller.signal,
             });
-
             return response;
         } finally {
             window.clearTimeout(timeout);
         }
     }, []);
 
-    const checkNow = useCallback(async () => {
+    // checkNow has STABLE dependencies only (no `status` in the dep array)
+    const checkNow = useCallback(async (): Promise<boolean> => {
         if (!enabled || !isDesktop) return true;
-        if (checkingRef.current) return status === 'ready';
+        if (checkingRef.current) return statusRef.current === 'ready';
+
+        // Already ready — no need to re-check
+        if (statusRef.current === 'ready') return true;
 
         checkingRef.current = true;
 
@@ -89,8 +103,6 @@ export function useDesktopBackend(
             if (startTimeRef.current === null) {
                 startTimeRef.current = Date.now();
                 setStatus('starting');
-            } else if (status !== 'ready') {
-                setStatus('checking');
             }
 
             let lastStatusCode: number | null = null;
@@ -111,7 +123,9 @@ export function useDesktopBackend(
                     lastStatusCode = response.status;
                 } catch (err) {
                     lastErrorMessage =
-                        err instanceof Error ? err.message : 'Unknown backend connection error';
+                        err instanceof Error
+                            ? err.message
+                            : 'Unknown backend connection error';
                 }
             }
 
@@ -121,11 +135,15 @@ export function useDesktopBackend(
             if (elapsed >= startupTimeoutMs) {
                 setStatus('error');
                 if (lastStatusCode !== null) {
-                    setError(`Backend did not become ready (${lastStatusCode}).`);
+                    setError(`Backend did not become ready (HTTP ${lastStatusCode}).`);
                 } else {
-                    setError(`Backend unavailable: ${lastErrorMessage ?? 'Unknown backend connection error'}`);
+                    setError(
+                        `Backend unavailable: ${lastErrorMessage ?? 'Unknown backend connection error'}`,
+                    );
                 }
             } else {
+                // Stay in "starting" while waiting — don't flip to "checking"
+                // to avoid UI flicker
                 setStatus('starting');
             }
 
@@ -133,8 +151,11 @@ export function useDesktopBackend(
         } finally {
             checkingRef.current = false;
         }
-    }, [enabled, healthUrls, isDesktop, startupTimeoutMs, status, checkUrl]);
+        // NOTE: `status` is intentionally excluded — we read from statusRef instead
+        // to keep checkNow stable and avoid resetting the polling interval
+    }, [enabled, healthUrls, isDesktop, startupTimeoutMs, checkUrl]);
 
+    // Mount / unmount
     useEffect(() => {
         mountedRef.current = true;
         return () => {
@@ -142,21 +163,58 @@ export function useDesktopBackend(
         };
     }, []);
 
+    // Listen to Tauri backend-status events from the Rust side
+    useEffect(() => {
+        if (!isDesktop) return;
+
+        let unlisten: (() => void) | null = null;
+
+        (async () => {
+            try {
+                // Dynamically import to avoid errors in non-Tauri environments
+                const { listen } = await import('@tauri-apps/api/event');
+                const unlistenFn = await listen<string>('backend-status', (event) => {
+                    if (!mountedRef.current) return;
+
+                    const payload = event.payload;
+                    if (payload === 'ready') {
+                        setStatus('ready');
+                        setError(null);
+                    } else if (payload === 'error') {
+                        setStatus('error');
+                        setError('Backend sidecar failed to start.');
+                    } else if (payload === 'starting') {
+                        // Only move to starting if not already ready
+                        setStatus((prev) => (prev === 'ready' ? prev : 'starting'));
+                    }
+                });
+                unlisten = unlistenFn;
+            } catch {
+                // Not in Tauri environment — ignore
+            }
+        })();
+
+        return () => {
+            unlisten?.();
+        };
+    }, [isDesktop]);
+
+    // Stable polling — checkNow reference is stable so this effect
+    // doesn't keep restarting
     useEffect(() => {
         if (!enabled || !isDesktop) return;
 
-        let intervalId: number | null = null;
-
+        // Initial check
         void checkNow();
 
-        intervalId = window.setInterval(() => {
+        const intervalId = window.setInterval(() => {
+            // Stop polling once ready
+            if (statusRef.current === 'ready') return;
             void checkNow();
         }, pollIntervalMs);
 
         return () => {
-            if (intervalId !== null) {
-                window.clearInterval(intervalId);
-            }
+            window.clearInterval(intervalId);
         };
     }, [checkNow, enabled, isDesktop, pollIntervalMs]);
 

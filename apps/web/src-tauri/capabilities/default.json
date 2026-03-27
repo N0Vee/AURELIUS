@@ -13,9 +13,32 @@
     "core:window:allow-minimize",
     "core:window:allow-set-focus",
     "core:window:allow-is-visible",
+    "core:tray:default",
+    "core:menu:default",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
-    "shell:allow-execute"
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "backend-server",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "backend-server",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    "shell:allow-kill",
+    "shell:allow-stdin-write"
   ]
 }

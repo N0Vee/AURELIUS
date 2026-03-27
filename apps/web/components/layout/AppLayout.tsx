@@ -81,7 +81,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                                         letterSpacing: '0.08em',
                                     }}
                                 >
-                                    AURELIUS
+                                    Aurelius
                                 </span>
                             </div>
 

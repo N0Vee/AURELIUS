@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const envSchema = z.object({
     PORT: z.coerce.number().default(3001),
-    HOST: z.string().default('localhost'),
+    HOST: z.string().default('0.0.0.0'),
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
     // LLM Provider Selection
@@ -17,7 +17,7 @@ const envSchema = z.object({
     OPENROUTER_MODEL: z.string().default('meta-llama/llama-3.1-8b-instruct:free'),
     OPENROUTER_BASE_URL: z.string().default('https://openrouter.ai/api/v1'),
     OPENROUTER_SITE_URL: z.string().default('http://localhost:3000'),
-    OPENROUTER_SITE_NAME: z.string().default('AURELIUS'),
+    OPENROUTER_SITE_NAME: z.string().default('Aurelius'),
 
     // Audio Engine (Phase 2)
     AUDIO_ENGINE_URL: z.string().default('ws://localhost:8000/ws'),

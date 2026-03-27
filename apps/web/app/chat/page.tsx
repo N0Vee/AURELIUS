@@ -190,7 +190,7 @@ export default function ChatPage() {
                                             transition={{ delay: 0.2 }}
                                         >
                                             <p className="text-sm font-medium mb-1" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                                                {isBackendReady ? 'How can I help you?' : 'Preparing AURELIUS…'}
+                                                {isBackendReady ? 'How can I help you?' : 'Preparing Aurelius…'}
                                             </p>
                                             <p className="text-xs mb-2" style={{ color: 'rgba(255,255,255,0.25)' }}>
                                                 Ctrl+Shift+Space to hide
@@ -335,7 +335,7 @@ export default function ChatPage() {
                                         handleSubmit(e);
                                     }
                                 }}
-                                placeholder={isBackendReady ? 'Ask AURELIUS anything...' : 'Waiting for backend...'}
+                                placeholder={isBackendReady ? 'Ask Aurelius anything...' : 'Waiting for backend...'}
                                 disabled={isLoading || !isBackendReady}
                                 rows={1}
                                 className="flex-1 bg-transparent resize-none focus:outline-none text-sm leading-relaxed"
@@ -479,7 +479,7 @@ export default function ChatPage() {
                                             handleSubmit(e);
                                         }
                                     }}
-                                    placeholder="Ask AURELIUS anything..."
+                                    placeholder="Ask Aurelius anything..."
                                     disabled={isLoading}
                                     rows={2}
                                     className="w-full bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none focus:outline-none text-base leading-relaxed"

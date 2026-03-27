@@ -12,9 +12,10 @@ import { getActiveProviderLabel } from './llm/provider';
 await initSettings();
 
 const app = new Elysia()
-    // CORS for Next.js frontend
+    // CORS for Next.js frontend & Tauri desktop shell
+    // Reflect any provided origin so desktop WebView requests always pass.
     .use(cors({
-        origin: env.CORS_ORIGIN,
+        origin: true,
         credentials: true,
     }))
 
@@ -57,7 +58,7 @@ const app = new Elysia()
     });
 
 console.log(`
-🏛️  AURELIUS Backend Server
+🏛️  Aurelius Backend Server
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📍 http://${env.HOST}:${env.PORT}
 🔧 Environment: ${env.NODE_ENV}

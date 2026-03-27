@@ -282,7 +282,7 @@ export default function SettingsPage() {
                                 LLM Provider
                             </CardTitle>
                             <CardDescription>
-                                Choose where AURELIUS sends chat requests.
+                                Choose where Aurelius sends chat requests.
                                 Ollama is fully local and private; OpenRouter routes to cloud models.
                             </CardDescription>
                         </CardHeader>
@@ -653,7 +653,7 @@ export default function SettingsPage() {
                                     <Input
                                         value={form.openrouterSiteName}
                                         onChange={e => update('openrouterSiteName', e.target.value)}
-                                        placeholder="AURELIUS"
+                                        placeholder="Aurelius"
                                     />
                                     <FieldHint>
                                         Shown in your OpenRouter activity dashboard as the app name.
@@ -708,7 +708,7 @@ export default function SettingsPage() {
                                     rows={14}
                                     spellCheck={false}
                                     className="w-full rounded-[var(--radius-md)] px-3 py-2.5 bg-[var(--surface)] border border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent resize-y transition-all text-sm font-mono leading-relaxed"
-                                    placeholder="You are AURELIUS…"
+                                    placeholder="You are Aurelius…"
                                 />
                                 <FieldHint>
                                     Injected as the first <code className="text-[var(--accent)] bg-[var(--surface)] px-1 rounded text-[11px]">system</code> message on every chat request.
@@ -942,12 +942,12 @@ export default function SettingsPage() {
                                             <Input
                                                 value={form.screenshotSavePath}
                                                 onChange={e => update('screenshotSavePath', e.target.value)}
-                                                placeholder="C:\Users\UsEr\Pictures\AURELIUS"
+                                                placeholder="C:\Users\UsEr\Pictures\Aurelius"
                                             />
                                             <FieldHint>
                                                 Screenshots will be saved here by default. Example:{' '}
                                                 <code className="text-[var(--accent)] bg-[var(--surface-elevated)] px-1 rounded">
-                                                    C:\Users\UsEr\Pictures\AURELIUS
+                                                    C:\Users\UsEr\Pictures\Aurelius
                                                 </code>
                                             </FieldHint>
                                         </div>
@@ -987,7 +987,7 @@ export default function SettingsPage() {
                                                     <Input
                                                         value={form.allowedWriteRoot}
                                                         onChange={e => update('allowedWriteRoot', e.target.value)}
-                                                        placeholder="C:\Users\UsEr\Documents\AURELIUS"
+                                                        placeholder="C:\Users\UsEr\Documents\Aurelius"
                                                     />
                                                     <FieldHint>
                                                         File creation and overwrite operations are limited to this folder.
@@ -1050,7 +1050,7 @@ export default function SettingsPage() {
                                                 placeholder={`C:\\Program Files\nC:\\Program Files (x86)\nC:\\Users\\UsEr\\AppData\\Local`}
                                             />
                                             <FieldHint>
-                                                Put one folder per line. Include any custom launcher or game install directories you want AURELIUS to search.
+                                                Put one folder per line. Include any custom launcher or game install directories you want Aurelius to search.
                                             </FieldHint>
                                         </div>
                                     </div>

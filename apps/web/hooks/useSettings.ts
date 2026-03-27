@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 // ============================================================
 // Types
@@ -48,29 +48,89 @@ export interface TestResult {
     message: string;
 }
 
-const API_BASE = 'http://localhost:3001/api/settings';
+// ============================================================
+// Desktop-safe API base resolution
+// ============================================================
+
+const API_BASE_CANDIDATES = [
+    'http://127.0.0.1:3001',
+    'http://localhost:3001',
+];
+
+function isDesktopRuntime(): boolean {
+    if (typeof window === 'undefined') return false;
+    return '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
+}
+
+async function probeApiBase(base: string): Promise<boolean> {
+    try {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 2000);
+
+        try {
+            const res = await fetch(`${base}/health`, {
+                method: 'GET',
+                cache: 'no-store',
+                signal: controller.signal,
+            });
+            return res.ok;
+        } finally {
+            window.clearTimeout(timeout);
+        }
+    } catch {
+        return false;
+    }
+}
+
+async function resolveApiBase(): Promise<string> {
+    for (const base of API_BASE_CANDIDATES) {
+        if (await probeApiBase(base)) {
+            return `${base}/api/settings`;
+        }
+    }
+
+    return `${API_BASE_CANDIDATES[0]}/api/settings`;
+}
 
 // ============================================================
 // Hook
 // ============================================================
 
 export function useSettings() {
-    const [settings, setSettings]       = useState<Settings | null>(null);
-    const [isLoading, setIsLoading]     = useState(true);
-    const [isSaving, setIsSaving]       = useState(false);
-    const [isTesting, setIsTesting]     = useState(false);
-    const [error, setError]             = useState<string | null>(null);
-    const [saveError, setSaveError]     = useState<string | null>(null);
-    const [testResult, setTestResult]   = useState<TestResult | null>(null);
+    const [settings, setSettings]     = useState<Settings | null>(null);
+    const [isLoading, setIsLoading]   = useState(true);
+    const [isSaving, setIsSaving]     = useState(false);
+    const [isTesting, setIsTesting]   = useState(false);
+    const [error, setError]           = useState<string | null>(null);
+    const [saveError, setSaveError]   = useState<string | null>(null);
+    const [testResult, setTestResult] = useState<TestResult | null>(null);
+    const [apiBase, setApiBase]       = useState<string | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const init = async () => {
+            const resolved = await resolveApiBase();
+            if (!cancelled) setApiBase(resolved);
+        };
+
+        void init();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     // ----------------------------------------------------------
     // Fetch
     // ----------------------------------------------------------
     const fetchSettings = useCallback(async () => {
+        if (!apiBase) return;
+
         setIsLoading(true);
         setError(null);
         try {
-            const res = await fetch(API_BASE);
+            const res = await fetch(apiBase);
             if (!res.ok) throw new Error(`Server responded with HTTP ${res.status}`);
             const data: Settings = await res.json();
             setSettings(data);
@@ -79,21 +139,24 @@ export function useSettings() {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [apiBase]);
 
     useEffect(() => {
-        fetchSettings();
-    }, [fetchSettings]);
+        if (!apiBase) return;
+        void fetchSettings();
+    }, [apiBase, fetchSettings]);
 
     // ----------------------------------------------------------
     // Save (PATCH)
     // ----------------------------------------------------------
     const saveSettings = useCallback(
         async (partial: Partial<Omit<Settings, 'openrouterApiKeySet'>>): Promise<boolean> => {
+            if (!apiBase) return false;
+
             setIsSaving(true);
             setSaveError(null);
             try {
-                const res = await fetch(API_BASE, {
+                const res = await fetch(apiBase, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(partial),
@@ -114,17 +177,19 @@ export function useSettings() {
                 setIsSaving(false);
             }
         },
-        []
+        [apiBase]
     );
 
     // ----------------------------------------------------------
     // Test Connection
     // ----------------------------------------------------------
     const testConnection = useCallback(async () => {
+        if (!apiBase) return;
+
         setIsTesting(true);
         setTestResult(null);
         try {
-            const res = await fetch(`${API_BASE}/test`, { method: 'POST' });
+            const res = await fetch(`${apiBase}/test`, { method: 'POST' });
             const data: TestResult = await res.json();
             setTestResult(data);
         } catch (err) {
@@ -136,14 +201,14 @@ export function useSettings() {
         } finally {
             setIsTesting(false);
         }
-    }, [settings?.llmProvider]);
+    }, [apiBase, settings?.llmProvider]);
 
     const clearTestResult = useCallback(() => setTestResult(null), []);
     const clearSaveError  = useCallback(() => setSaveError(null), []);
 
     return {
         settings,
-        isLoading,
+        isLoading: isLoading || !apiBase,
         isSaving,
         isTesting,
         error,
@@ -154,5 +219,6 @@ export function useSettings() {
         clearTestResult,
         clearSaveError,
         refetch: fetchSettings,
+        isDesktop: isDesktopRuntime(),
     };
 }

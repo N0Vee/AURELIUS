@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia';
 import {
     getPublicSettings,
     getSettings,
+    getSettingsFilePath,
     updateSettings,
     SettingsSchema,
 } from '../config/settings.store';
@@ -14,6 +15,16 @@ export const settingsRoute = new Elysia({ prefix: '/api/settings' })
     // ----------------------------------------------------------
     .get('/', () => {
         return getPublicSettings();
+    })
+
+    // ----------------------------------------------------------
+    // GET /api/settings/info
+    // Returns debug info about the settings store (file path, etc.)
+    // ----------------------------------------------------------
+    .get('/info', () => {
+        return {
+            settingsFilePath: getSettingsFilePath(),
+        };
     })
 
     // ----------------------------------------------------------

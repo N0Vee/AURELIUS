@@ -16,7 +16,7 @@ export default function Home() {
               <div className="relative h-32 w-32 md:h-40 md:w-40">
                 <Image
                   src="/images/aurelius-icon.png"
-                  alt="AURELIUS logo"
+                  alt="Aurelius logo"
                   fill
                   priority
                   className="object-contain drop-shadow-[0_0_32px_rgba(245,158,11,0.28)]"
@@ -26,7 +26,7 @@ export default function Home() {
 
             <div className="space-y-2">
               <h1 className="text-5xl font-bold tracking-tight text-[var(--text-primary)] md:text-6xl">
-                AURELIUS
+                Aurelius
               </h1>
               <p className="text-xl text-[var(--text-secondary)] md:text-2xl">
                 Your Local Personal AI Assistant

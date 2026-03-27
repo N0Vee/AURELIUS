@@ -118,7 +118,7 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
                     {isUser ? (
                         <User size={17} className="text-white" />
                     ) : (
-                        /* AURELIUS monogram */
+                        /* Aurelius monogram */
                         <span
                             className="text-[11px] font-bold tracking-tight select-none"
                             style={{ color: 'var(--accent)' }}

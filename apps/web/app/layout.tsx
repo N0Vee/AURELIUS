@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AURELIUS",
+  title: "Aurelius",
   description: "Local Personal AI Assistant",
   icons: {
     icon: "/images/aurelius-icon.png",

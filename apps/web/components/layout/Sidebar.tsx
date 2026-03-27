@@ -40,7 +40,7 @@ export function Sidebar() {
                 <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-black/60 shadow-[0_0_24px_var(--accent-glow)]">
                     <Image
                         src="/images/aurelius-icon.png"
-                        alt="AURELIUS logo"
+                        alt="Aurelius logo"
                         fill
                         className="object-contain p-1"
                         sizes="40px"
@@ -50,7 +50,7 @@ export function Sidebar() {
 
                 <div className="min-w-0">
                     <p className="text-sm font-semibold tracking-[0.18em] text-[var(--text-primary)]">
-                        AURELIUS
+                        Aurelius
                     </p>
                     <p className="text-[11px] text-[var(--text-muted)]">
                         Local AI Control Plane

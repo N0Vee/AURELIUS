@@ -104,7 +104,7 @@ export default function DashboardPage() {
                                 Aum
                             </h2>
                             <p className="text-[var(--text-secondary)] mt-2 max-w-md">
-                                AURELIUS is ready to assist. All systems running locally with full privacy.
+                                Aurelius is ready to assist. All systems running locally with full privacy.
                             </p>
                         </div>
                         <div className="absolute right-6 top-1/2 -translate-y-1/2">
