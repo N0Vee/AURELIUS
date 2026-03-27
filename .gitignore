@@ -21,7 +21,18 @@ bun.lockb # (ถ้าต้องการเก็บ lockfile ไว้บน
 
 # python
 **/venv/
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
 
+# databases / local storage
+**/*.sqlite
+**/*.db
+
+# env files
+.env.local
+.env.*.local
 # production
 **/build/
 **/dist/
