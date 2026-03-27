@@ -6,11 +6,9 @@
         "dev": "next dev",
         "build": "next build",
         "start": "next start",
-        "lint": "next lint",
-        "tauri": "tauri"
+        "lint": "next lint"
     },
     "dependencies": {
-        "@tauri-apps/api": "^2.10.1",
         "@types/react-syntax-highlighter": "^15.5.13",
         "clsx": "^2.1.1",
         "framer-motion": "^12.23.26",
@@ -25,7 +23,6 @@
     },
     "devDependencies": {
         "@tailwindcss/postcss": "^4",
-        "@tauri-apps/cli": "^2.10.1",
         "@types/node": "^20",
         "@types/react": "^19",
         "@types/react-dom": "^19",

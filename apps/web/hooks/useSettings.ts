@@ -40,7 +40,6 @@ export interface Settings {
     systemPrompt: string;
     temperature: number;
     maxTokens: number;
-    opacity: number;
 }
 
 export interface TestResult {
@@ -50,18 +49,13 @@ export interface TestResult {
 }
 
 // ============================================================
-// Desktop-safe API base resolution
+// API base resolution
 // ============================================================
 
 const API_BASE_CANDIDATES = [
     'http://127.0.0.1:3001',
     'http://localhost:3001',
 ];
-
-function isDesktopRuntime(): boolean {
-    if (typeof window === 'undefined') return false;
-    return '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
-}
 
 async function probeApiBase(base: string): Promise<boolean> {
     try {
@@ -220,6 +214,5 @@ export function useSettings() {
         clearTestResult,
         clearSaveError,
         refetch: fetchSettings,
-        isDesktop: isDesktopRuntime(),
     };
 }
