@@ -98,7 +98,7 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
             className={cn(
-                'flex gap-3 w-full group',
+                'flex gap-2 sm:gap-3 w-full group',
                 isUser ? 'flex-row-reverse' : 'flex-row',
             )}
         >
@@ -109,18 +109,21 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
                     animate={{ scale: 1 }}
                     transition={{ delay: 0.08, type: 'spring', stiffness: 500, damping: 30 }}
                     className={cn(
-                        'flex h-9 w-9 items-center justify-center rounded-full',
+                        'flex h-7 w-7 sm:h-9 sm:w-9 items-center justify-center rounded-full',
                         isUser
                             ? 'bg-[var(--accent)]'
                             : 'bg-[var(--surface)] border border-[var(--border)]',
                     )}
                 >
                     {isUser ? (
-                        <User size={17} className="text-white" />
+                        <>
+                            <User size={14} className="text-white sm:hidden" />
+                            <User size={17} className="text-white hidden sm:block" />
+                        </>
                     ) : (
                         /* Aurelius monogram */
                         <span
-                            className="text-[11px] font-bold tracking-tight select-none"
+                            className="text-[9px] sm:text-[11px] font-bold tracking-tight select-none"
                             style={{ color: 'var(--accent)' }}
                         >
                             AU
@@ -144,13 +147,13 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
             </div>
 
             {/* ── Bubble ─────────────────────────────────────────── */}
-            <div className="flex flex-col max-w-[75%]">
+            <div className="flex flex-col max-w-[85%] sm:max-w-[75%]">
                 <motion.div
                     initial={{ opacity: 0, x: isUser ? 16 : -16 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.08, duration: 0.22 }}
                     className={cn(
-                        'rounded-2xl px-4 py-3 transition-shadow duration-500',
+                        'rounded-2xl px-3 py-2 sm:px-4 sm:py-3 transition-shadow duration-500',
                         isUser
                             ? 'bg-[var(--accent)] text-white rounded-tr-sm'
                             : isError
@@ -225,7 +228,7 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
                                             return (
                                                 <div className="my-3 overflow-hidden rounded-lg border border-[var(--border)]">
                                                     {language && (
-                                                        <div className="bg-[var(--surface)] px-4 py-2 text-xs text-[var(--text-muted)] border-b border-[var(--border)] font-mono">
+                                                        <div className="bg-[var(--surface)] px-3 py-1.5 sm:px-4 sm:py-2 text-xs text-[var(--text-muted)] border-b border-[var(--border)] font-mono">
                                                             {language}
                                                         </div>
                                                     )}
@@ -235,9 +238,9 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
                                                         PreTag="div"
                                                         customStyle={{
                                                             margin: 0,
-                                                            padding: '1rem',
+                                                            padding: '0.625rem',
                                                             background: '#111111',
-                                                            fontSize: '0.875rem',
+                                                            fontSize: '0.75rem',
                                                             borderRadius: 0,
                                                         }}
                                                     >
@@ -247,10 +250,10 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
                                             );
                                         },
                                         h1: ({ children }) => (
-                                            <h1 className="text-xl font-bold mt-5 mb-2 first:mt-0">{children}</h1>
+                                            <h1 className="text-lg sm:text-xl font-bold mt-4 sm:mt-5 mb-2 first:mt-0">{children}</h1>
                                         ),
                                         h2: ({ children }) => (
-                                            <h2 className="text-lg font-bold mt-4 mb-2 first:mt-0">{children}</h2>
+                                            <h2 className="text-base sm:text-lg font-bold mt-3 sm:mt-4 mb-2 first:mt-0">{children}</h2>
                                         ),
                                         h3: ({ children }) => (
                                             <h3 className="text-base font-semibold mt-3 mb-2 first:mt-0">{children}</h3>
@@ -277,8 +280,8 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
                                             <strong className="font-semibold">{children}</strong>
                                         ),
                                         table: ({ children }) => (
-                                            <div className="my-4 overflow-x-auto rounded-lg border border-[var(--border)]">
-                                                <table className="w-full text-left text-sm border-collapse">
+                                            <div className="my-2 sm:my-4 overflow-x-auto rounded-lg border border-[var(--border)]">
+                                                <table className="w-full text-left text-xs sm:text-sm border-collapse">
                                                     {children}
                                                 </table>
                                             </div>
@@ -299,12 +302,12 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
                                             </tr>
                                         ),
                                         th: ({ children }) => (
-                                            <th className="px-4 py-2 font-semibold border-r border-[var(--border)] last:border-r-0">
+                                            <th className="px-2 py-1.5 sm:px-4 sm:py-2 font-semibold border-r border-[var(--border)] last:border-r-0">
                                                 {children}
                                             </th>
                                         ),
                                         td: ({ children }) => (
-                                            <td className="px-4 py-2 border-r border-[var(--border)] last:border-r-0">
+                                            <td className="px-2 py-1.5 sm:px-4 sm:py-2 border-r border-[var(--border)] last:border-r-0">
                                                 {children}
                                             </td>
                                         ),

@@ -411,6 +411,8 @@ async function findFiles(rootPath: string, query: string): Promise<string> {
     return [
         `Found ${matches.length} file${matches.length > 1 ? 's' : ''} for "${query}" in "${resolvedRootPath}":`,
         ...matches.map((m, i) => `${i + 1}. ${m}`),
+        '',
+        'IMPORTANT: Use the exact full paths above when calling open_file, read_file, or any other tool. Do NOT modify, shorten, or re-invent these paths.',
     ].join('\n');
 }
 
@@ -864,6 +866,32 @@ export async function executeTool(
                     { timeout: 8000 },
                 );
                 return `Opened URL "${url}" successfully.`;
+            }
+
+            case 'open_file': {
+                const filePath = String(args.path ?? '').trim();
+                if (!filePath) return 'Error: No file path provided.';
+
+                const resolvedPath = resolveReadPath(filePath);
+
+                if (isSuspiciousPath(resolvedPath)) {
+                    return `Error: Invalid file path "${filePath}".`;
+                }
+                if (!isAllowedReadPath(resolvedPath)) {
+                    return `Error: "${resolvedPath}" is outside the allowed file roots.`;
+                }
+
+                try {
+                    await stat(resolvedPath);
+                } catch {
+                    return `Error: File not found at "${resolvedPath}".`;
+                }
+
+                await execAsync(
+                    `powershell.exe -NoProfile -Command "Start-Process '${resolvedPath.replace(/'/g, "''")}'"`  ,
+                    { timeout: 8000 },
+                );
+                return `Opened "${resolvedPath}" with its default application.`;
             }
 
             // ── DANGEROUS ─────────────────────────────────────────────

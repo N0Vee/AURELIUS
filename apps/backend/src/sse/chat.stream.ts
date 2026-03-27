@@ -11,8 +11,8 @@ const ChatRequestSchema = z.object({
     messages: z.array(ChatMessageSchema),
 });
 
-const MAX_TOOL_ITERATIONS = 6;
-const MAX_SAME_TOOL_CALLS  = 2; // prevent the LLM looping the same tool
+const MAX_TOOL_ITERATIONS = 10;
+const MAX_SAME_TOOL_CALLS  = 4; // prevent the LLM looping the same tool
 const MAX_STREAM_RETRIES   = 1; // retry a failed LLM call once per iteration
 
 /**
@@ -235,6 +235,30 @@ async function* agentLoop(
             tool_call_id: toolCallEvent.id,
             timestamp: Date.now(),
         });
+    }
+
+    // ── Safety net: if the loop ended after a tool call (hit iteration cap
+    //    or the last iteration was a tool call), do one final LLM call
+    //    WITHOUT tools to force a text summary so the user never gets silence.
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.role === 'tool') {
+        messages.push({
+            id: crypto.randomUUID(),
+            role: 'system',
+            content: 'You have finished all tool calls. Now give the user a concise final text summary of everything you did and the results. Do NOT call any more tools.',
+            timestamp: Date.now(),
+        });
+
+        try {
+            for await (const event of streamChatCompletion(messages, undefined)) {
+                if (event.type === 'text' && event.content) {
+                    yield `event: chunk\ndata: ${JSON.stringify({ content: event.content })}\n\n`;
+                }
+            }
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error('[AgentLoop] Final summary stream error:', msg);
+        }
     }
 }
 

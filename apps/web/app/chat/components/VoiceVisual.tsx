@@ -141,7 +141,7 @@ export function VoiceVisual({ onResponse, language, onLanguageChange }: VoiceVis
     };
 
     return (
-        <div className="flex flex-col items-center justify-center h-full gap-8">
+        <div className="flex flex-col items-center justify-center h-full gap-4 sm:gap-8">
             {/* Status Text */}
             <AnimatePresence mode="wait">
                 {!isConnected ? (
@@ -150,7 +150,7 @@ export function VoiceVisual({ onResponse, language, onLanguageChange }: VoiceVis
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="text-[var(--text-muted)] text-lg"
+                        className="text-[var(--text-muted)] text-sm sm:text-lg"
                     >
                         Connecting to audio engine...
                     </motion.p>
@@ -161,7 +161,7 @@ export function VoiceVisual({ onResponse, language, onLanguageChange }: VoiceVis
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
                         className={cn(
-                            "text-xl font-medium transition-colors",
+                            "text-base sm:text-xl font-medium transition-colors",
                             isSpeaking ? "text-red-400" : "text-[var(--text-secondary)]"
                         )}
                     >
@@ -173,7 +173,7 @@ export function VoiceVisual({ onResponse, language, onLanguageChange }: VoiceVis
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
-                        className="text-[var(--text-muted)] text-lg"
+                        className="text-[var(--text-muted)] text-sm sm:text-lg"
                     >
                         Tap to start speaking
                     </motion.p>
@@ -190,8 +190,8 @@ export function VoiceVisual({ onResponse, language, onLanguageChange }: VoiceVis
                     "relative flex items-center justify-center rounded-full transition-all duration-300",
                     !isConnected && "opacity-50 cursor-not-allowed",
                     isRecording
-                        ? "w-32 h-32 bg-gradient-to-br from-red-500 to-red-600"
-                        : "w-28 h-28 bg-gradient-to-br from-[var(--accent)] to-[var(--accent-glow)]"
+                        ? "w-24 h-24 sm:w-32 sm:h-32 bg-gradient-to-br from-red-500 to-red-600"
+                        : "w-20 h-20 sm:w-28 sm:h-28 bg-gradient-to-br from-[var(--accent)] to-[var(--accent-glow)]"
                 )}
             >
                 {/* Animated Rings */}
@@ -234,17 +234,21 @@ export function VoiceVisual({ onResponse, language, onLanguageChange }: VoiceVis
                     transition={{ duration: 0.5, repeat: isRecording ? Infinity : 0 }}
                     className="text-white"
                 >
-                    {isRecording ? <MicOff size={40} /> : <Mic size={36} />}
+                    {isRecording
+                        ? <><MicOff size={28} className="sm:hidden" /><MicOff size={40} className="hidden sm:block" /></>
+                        : <><Mic size={24} className="sm:hidden" /><Mic size={36} className="hidden sm:block" /></>
+                    }
                 </motion.div>
             </motion.button>
 
             {/* Language Toggle */}
             <button
                 onClick={toggleLanguage}
-                className="flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--surface)] hover:bg-[var(--surface-active)] transition-colors text-[var(--text-secondary)]"
+                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[var(--surface)] hover:bg-[var(--surface-active)] transition-colors text-[var(--text-secondary)]"
             >
-                <Languages size={18} />
-                <span className="font-medium">{language === 'th' ? '🇹🇭 Thai (Beta)' : '🇺🇸 English'}</span>
+                <Languages size={15} className="sm:hidden" />
+                <Languages size={18} className="hidden sm:block" />
+                <span className="text-sm sm:text-base font-medium">{language === 'th' ? '🇹🇭 Thai (Beta)' : '🇺🇸 English'}</span>
             </button>
         </div>
     );

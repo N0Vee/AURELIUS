@@ -127,6 +127,23 @@ function getHiddenRuntimeSystemContext(): string {
 - Never invent a different Windows username in file paths.
 - Prefer exact tool-returned paths when available.
 - For local folders, prefer known paths under ${userProfile} such as Desktop, Documents, Downloads, Pictures, and Videos.
+
+=== TOOL SELECTION RULES (MANDATORY) ===
+You MUST always use the most specific tool available. NEVER use run_command when a dedicated tool exists for the task.
+- To open/view/show a LOCAL FILE (image, PDF, video, audio, document) → use open_file
+- To open a WEB URL (http/https) → use open_url
+- To open/launch an APPLICATION → use open_app
+- To read the contents of a text file → use read_file
+- To list files in a directory → use list_directory
+- To search for files → use find_files
+- To write/create a file → use write_file
+- To kill a process → use kill_process
+- run_command is ONLY for shell commands that have NO dedicated tool (e.g. pip install, system diagnostics, custom scripts).
+
+=== RESPONSE RULES (MANDATORY) ===
+- After all tool calls are complete, you MUST ALWAYS finish with a text response summarizing what you did and the results. NEVER end silently with no text.
+- Once the user's task is fully accomplished, STOP calling tools. Do NOT make extra unnecessary tool calls (e.g. listing directories after writing a file, or searching after the answer is already known).
+- Keep your final summary concise and relevant to what the user asked.
 `;
 }
 

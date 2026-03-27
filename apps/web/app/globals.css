@@ -1,20 +1,16 @@
 @import "tailwindcss";
 
-/* Tauri Desktop Overlay Modifiers */
-html.tauri, html.tauri body, .tauri {
-  background: transparent !important;
-}
 
-/* Fix transparency override by targeting inline styles from AppLayout */
-html[style*="transparent"], body[style*="transparent"] {
-  background: transparent !important;
-}
 
 /* ===== AURELIUS Design Tokens - Premium Dark with Gold Accent ===== */
 :root {
   /* Base Colors - Dark Gradient */
   --background: #0a0a0a;
   --background-gradient: linear-gradient(135deg, #0a0a0a 0%, #0f0f0a 50%, #0a0a0a 100%);
+  --overlay-bg: #0c0c0c;
+  --overlay-border: rgba(255, 255, 255, 0.12);
+  --overlay-glass: #161616;
+  --overlay-glass-strong: #1c1c1c;
   --surface: rgba(255, 255, 255, 0.03);
   --surface-hover: rgba(255, 255, 255, 0.06);
   --surface-elevated: rgba(255, 255, 255, 0.05);
@@ -41,9 +37,9 @@ html[style*="transparent"], body[style*="transparent"] {
   --dangerous-glow: rgba(239, 68, 68, 0.3);
 
   /* Glass Effect */
-  --glass-bg: rgba(255, 255, 255, 0.02);
-  --glass-bg-strong: rgba(255, 255, 255, 0.04);
-  --glass-blur: 16px;
+  --glass-bg: #111111;
+  --glass-bg-strong: #161616;
+  --glass-blur: 0px;
   --glass-border: rgba(255, 255, 255, 0.06);
 
   /* Spacing */
@@ -82,8 +78,6 @@ body {
 /* ===== Glass Card ===== */
 .glass {
   background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
@@ -91,7 +85,6 @@ body {
 
 .glass-strong {
   background: var(--glass-bg-strong);
-  backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-lg);
 }
@@ -115,7 +108,6 @@ body {
 /* ===== Stat Cards ===== */
 .stat-card {
   background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   transition: all 0.3s ease;
@@ -157,8 +149,7 @@ body {
 
 /* ===== Sidebar ===== */
 .sidebar {
-  background: linear-gradient(180deg, rgba(10, 10, 10, 0.98) 0%, rgba(15, 15, 26, 0.98) 100%);
-  backdrop-filter: blur(20px);
+  background: linear-gradient(180deg, #0a0a0a 0%, #0f0f1a 100%);
 }
 
 /* ===== Scrollbar ===== */

@@ -69,22 +69,22 @@ export function ToolConfirmBubble({ message, onApprove, onReject }: ToolConfirmB
             className="flex justify-start"
         >
             <div className={cn(
-                'max-w-[520px] w-full rounded-2xl border p-4 space-y-3',
+                'max-w-full sm:max-w-[520px] w-full rounded-2xl border p-3 sm:p-4 space-y-2 sm:space-y-3',
                 cfg.bg,
                 cfg.border,
             )}>
 
                 {/* Header row */}
-                <div className="flex items-center gap-3">
-                    <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full', cfg.iconBg)}>
+                <div className="flex items-center gap-2 sm:gap-3">
+                    <div className={cn('flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-full', cfg.iconBg)}>
                         {cfg.icon}
                     </div>
                     <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold text-[var(--text-primary)]">
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                            <p className="text-xs sm:text-sm font-semibold text-[var(--text-primary)]">
                                 {message.displayName}
                             </p>
-                            <span className={cn('text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full border', cfg.labelCls, cfg.border)}>
+                            <span className={cn('text-[9px] sm:text-[10px] font-bold uppercase tracking-widest px-1 sm:px-1.5 py-0.5 rounded-full border', cfg.labelCls, cfg.border)}>
                                 {cfg.label}
                             </span>
                         </div>
@@ -96,7 +96,7 @@ export function ToolConfirmBubble({ message, onApprove, onReject }: ToolConfirmB
                     {/* Status badge when resolved */}
                     {!isPending && (
                         <div className={cn(
-                            'flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full',
+                            'flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-xs font-medium px-2 sm:px-2.5 py-1 rounded-full shrink-0',
                             isApproved
                                 ? 'bg-[var(--safe-glow)] text-[var(--safe)]'
                                 : 'bg-[var(--dangerous-glow)] text-[var(--dangerous)]',
@@ -137,22 +137,22 @@ export function ToolConfirmBubble({ message, onApprove, onReject }: ToolConfirmB
                     <div className="flex items-center gap-2 pt-1">
                         <button
                             onClick={onReject}
-                            className="flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-md)] text-sm font-medium bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--dangerous)]/60 hover:text-[var(--dangerous)] transition-all"
+                            className="flex items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-[var(--radius-md)] text-xs sm:text-sm font-medium bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--dangerous)]/60 hover:text-[var(--dangerous)] transition-all"
                         >
-                            <X size={14} />
+                            <X size={13} />
                             Reject
                         </button>
                         <button
                             onClick={onApprove}
                             className={cn(
-                                'flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-md)] text-sm font-medium text-white transition-all',
+                                'flex items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-[var(--radius-md)] text-xs sm:text-sm font-medium text-white transition-all',
                                 cfg.btnCls,
                             )}
                         >
-                            <Check size={14} />
+                            <Check size={13} />
                             Approve
                         </button>
-                        <p className="ml-auto text-[10px] text-[var(--text-muted)]">
+                        <p className="ml-auto text-[10px] text-[var(--text-muted)] hidden sm:block">
                             Waiting for your decision…
                         </p>
                     </div>
@@ -179,14 +179,14 @@ export function ToolAutoBubble({ message }: ToolAutoBubbleProps) {
             transition={{ duration: 0.2 }}
             className="flex justify-start"
         >
-            <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-full bg-[var(--safe-glow)] border border-[var(--safe)]/30 max-w-[420px]">
+            <div className="flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full bg-[var(--safe-glow)] border border-[var(--safe)]/30 max-w-full sm:max-w-[420px] min-w-0">
                 <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--safe)]/20">
                     <Check size={11} className="text-[var(--safe)]" />
                 </div>
-                <span className="text-xs text-[var(--safe)] font-medium">
+                <span className="text-xs text-[var(--safe)] font-medium shrink-0">
                     Used <span className="font-semibold">{message.displayName}</span>
                 </span>
-                <span className="text-xs text-[var(--text-muted)] truncate max-w-[200px]">
+                <span className="text-xs text-[var(--text-muted)] truncate min-w-0">
                     → {message.result}
                 </span>
             </div>
