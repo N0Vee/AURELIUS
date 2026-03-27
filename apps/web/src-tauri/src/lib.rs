@@ -67,7 +67,7 @@ fn wait_for_backend(timeout: Duration) -> bool {
 fn spawn_sidecar(app: &AppHandle) -> Result<(), String> {
     // If backend is already running (e.g. separate dev:backend), skip
     if is_port_open("127.0.0.1", 3001) || is_port_open("localhost", 3001) {
-        eprintln!("[Aurelius] Backend already running on port 3001 — skipping sidecar spawn");
+        eprintln!("[AURELIUS] Backend already running on port 3001 — skipping sidecar spawn");
         let _ = app.emit("backend-status", "ready");
         return Ok(());
     }
@@ -94,7 +94,7 @@ fn spawn_sidecar(app: &AppHandle) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("failed to spawn backend sidecar: {e}"))?;
 
-    eprintln!("[Aurelius] Sidecar process spawned (pid={})", child.pid());
+    eprintln!("[AURELIUS] Sidecar process spawned (pid={})", child.pid());
 
     *guard = Some(child);
     drop(guard);
@@ -135,32 +135,32 @@ fn spawn_sidecar(app: &AppHandle) -> Result<(), String> {
 fn start_backend_async(app: AppHandle) {
     thread::spawn(move || {
         let _ = app.emit("backend-status", "starting");
-        eprintln!("[Aurelius] Starting backend sidecar...");
+        eprintln!("[AURELIUS] Starting backend sidecar...");
 
         match spawn_sidecar(&app) {
             Ok(()) => {
                 // If port was already open, we already emitted "ready"
                 if is_port_open("127.0.0.1", 3001) || is_port_open("localhost", 3001) {
                     let _ = app.emit("backend-status", "ready");
-                    eprintln!("[Aurelius] Backend is ready on port 3001");
+                    eprintln!("[AURELIUS] Backend is ready on port 3001");
                     return;
                 }
 
                 // Wait for the sidecar to start listening
-                eprintln!("[Aurelius] Waiting for backend to become ready on port 3001...");
+                eprintln!("[AURELIUS] Waiting for backend to become ready on port 3001...");
                 if wait_for_backend(Duration::from_secs(30)) {
                     let _ = app.emit("backend-status", "ready");
-                    eprintln!("[Aurelius] Backend is ready on port 3001");
+                    eprintln!("[AURELIUS] Backend is ready on port 3001");
                 } else {
                     let _ = app.emit("backend-status", "error");
                     eprintln!(
-                        "[Aurelius] Backend did not become ready on port 3001 within 30 seconds"
+                        "[AURELIUS] Backend did not become ready on port 3001 within 30 seconds"
                     );
                 }
             }
             Err(err) => {
                 let _ = app.emit("backend-status", "error");
-                eprintln!("[Aurelius] Backend startup failed: {err}");
+                eprintln!("[AURELIUS] Backend startup failed: {err}");
             }
         }
     });
@@ -174,14 +174,14 @@ fn cleanup_backend(app: &AppHandle) {
     let owns = state.owns_sidecar.lock().map(|g| *g).unwrap_or(false);
 
     if !owns {
-        eprintln!("[Aurelius] Backend was external — not killing");
+        eprintln!("[AURELIUS] Backend was external — not killing");
         return;
     }
 
     let child = state.child.lock().ok().and_then(|mut g| g.take());
 
     if let Some(c) = child {
-        eprintln!("[Aurelius] Killing backend sidecar (pid={})", c.pid());
+        eprintln!("[AURELIUS] Killing backend sidecar (pid={})", c.pid());
         let _ = c.kill();
     }
 }
@@ -211,7 +211,7 @@ fn toggle_main_window(app: &AppHandle) {
 
 /// Perform a full graceful shutdown: cleanup sidecar, unregister hotkey, exit.
 fn quit_app(app: &AppHandle) {
-    eprintln!("[Aurelius] Quitting application...");
+    eprintln!("[AURELIUS] Quitting application...");
     cleanup_backend(app);
     app.exit(0);
 }
@@ -287,7 +287,7 @@ pub fn run() {
 
             // ── Register global hotkey ─────────────────────────
             if let Err(err) = app.handle().global_shortcut().register(hotkey) {
-                eprintln!("[Aurelius] Failed to register hotkey Ctrl+Shift+Space: {err}");
+                eprintln!("[AURELIUS] Failed to register hotkey Ctrl+Shift+Space: {err}");
             }
 
             Ok(())
