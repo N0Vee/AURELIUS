@@ -5,6 +5,7 @@ import { initSettings } from './config/settings.store';
 import { chatStreamRoute } from './sse/chat.stream';
 import { settingsRoute } from './routes/settings.route';
 import { toolsRoute } from './routes/tools.route';
+import { browserBridgeRoute, isBrowserConnected } from './browser/bridge';
 import { getSystemStats } from './debug/hardware';
 import { getActiveProviderLabel } from './llm/provider';
 
@@ -41,6 +42,14 @@ const app = new Elysia()
             await Bun.sleep(2000); // Update every 2 seconds
         }
     })
+
+    // Browser extension WebSocket bridge
+    .use(browserBridgeRoute)
+
+    // Browser extension connection status
+    .get('/api/browser/status', () => ({
+        connected: isBrowserConnected(),
+    }))
 
     // Settings CRUD + connection test
     .use(settingsRoute)

@@ -516,3 +516,386 @@ register({
         },
     },
 });
+
+// ============================================================
+// Browser Control Tools (Zen Browser Extension)
+// ============================================================
+
+// ── SAFE ────────────────────────────────────────────────────
+
+register({
+    name: 'browser_get_url',
+    displayName: 'Browser: Get Current URL',
+    description: 'Get the URL and title of the currently active browser tab',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_get_url',
+            description: 'Get the URL and title of the currently active tab in Zen Browser. Use this to check what page is open before performing browser actions.',
+            parameters: {
+                type: 'object',
+                properties: {},
+                required: [],
+            },
+        },
+    },
+});
+
+register({
+    name: 'browser_get_tabs',
+    displayName: 'Browser: Get All Tabs',
+    description: 'List all currently open tabs in Zen Browser',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_get_tabs',
+            description: 'List all open tabs in Zen Browser with their IDs, titles, and URLs. Use this to find a specific tab before switching to it or closing it.',
+            parameters: {
+                type: 'object',
+                properties: {},
+                required: [],
+            },
+        },
+    },
+});
+
+register({
+    name: 'browser_get_content',
+    displayName: 'Browser: Get Page Content',
+    description: 'Extract the visible text content of the current browser tab',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_get_content',
+            description: 'Extract the visible text content from the current active tab. Returns the page title, URL, and readable text. Use this to read and summarise web pages, extract data, or understand what is on screen.',
+            parameters: {
+                type: 'object',
+                properties: {},
+                required: [],
+            },
+        },
+    },
+});
+
+register({
+    name: 'browser_find_elements',
+    displayName: 'Browser: Find Elements',
+    description: 'Find interactive elements on the current page',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_find_elements',
+            description: 'Find and list interactive elements (buttons, inputs, links, selects) visible on the current page. Optionally filter by a keyword. Use this to discover what you can click or type into before using browser_click or browser_type.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    filter: {
+                        type: 'string',
+                        description: 'Optional keyword to filter elements by text, label, or attribute. e.g. "search", "login", "submit". Leave empty to list all interactive elements.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+});
+
+register({
+    name: 'browser_scroll',
+    displayName: 'Browser: Scroll',
+    description: 'Scroll the current page or scroll to a specific element',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_scroll',
+            description: 'Scroll the current browser page. Can scroll by direction/amount, to absolute coordinates, or scroll a specific element into view.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    direction: {
+                        type: 'string',
+                        description: 'Scroll direction: "down", "up", "left", "right". Defaults to "down".',
+                    },
+                    amount: {
+                        type: 'number',
+                        description: 'Pixels to scroll. Defaults to 300.',
+                    },
+                    selector: {
+                        type: 'string',
+                        description: 'CSS selector or text of an element to scroll into view. Overrides direction/amount.',
+                    },
+                    x: {
+                        type: 'number',
+                        description: 'Absolute horizontal scroll position in pixels. Used with y for exact positioning.',
+                    },
+                    y: {
+                        type: 'number',
+                        description: 'Absolute vertical scroll position in pixels. Used with x for exact positioning.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+});
+
+register({
+    name: 'browser_go_back',
+    displayName: 'Browser: Go Back',
+    description: 'Navigate back in the current tab\'s browser history',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_go_back',
+            description: 'Navigate back to the previous page in the current tab\'s browser history.',
+            parameters: {
+                type: 'object',
+                properties: {},
+                required: [],
+            },
+        },
+    },
+});
+
+register({
+    name: 'browser_go_forward',
+    displayName: 'Browser: Go Forward',
+    description: 'Navigate forward in the current tab\'s browser history',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_go_forward',
+            description: 'Navigate forward to the next page in the current tab\'s browser history.',
+            parameters: {
+                type: 'object',
+                properties: {},
+                required: [],
+            },
+        },
+    },
+});
+
+register({
+    name: 'browser_reload',
+    displayName: 'Browser: Reload',
+    description: 'Reload the current tab',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_reload',
+            description: 'Reload / refresh the currently active browser tab.',
+            parameters: {
+                type: 'object',
+                properties: {},
+                required: [],
+            },
+        },
+    },
+});
+
+// ── SENSITIVE ───────────────────────────────────────────────
+
+register({
+    name: 'browser_navigate',
+    displayName: 'Browser: Navigate',
+    description: 'Navigate the active tab to a URL',
+    permissionLevel: 'SENSITIVE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_navigate',
+            description: 'Navigate the currently active Zen Browser tab to a specified URL. Waits for the page to finish loading before returning.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    url: {
+                        type: 'string',
+                        description: 'The full URL to navigate to. Must include the scheme. e.g. "https://google.com", "https://github.com/user/repo"',
+                    },
+                },
+                required: ['url'],
+            },
+        },
+    },
+});
+
+register({
+    name: 'browser_new_tab',
+    displayName: 'Browser: New Tab',
+    description: 'Open a new tab in Zen Browser',
+    permissionLevel: 'SENSITIVE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_new_tab',
+            description: 'Open a new tab in Zen Browser, optionally navigating to a URL.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    url: {
+                        type: 'string',
+                        description: 'Optional URL to open in the new tab. Leave empty for a blank tab.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+});
+
+register({
+    name: 'browser_close_tab',
+    displayName: 'Browser: Close Tab',
+    description: 'Close a specific tab by its ID',
+    permissionLevel: 'SENSITIVE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_close_tab',
+            description: 'Close a specific tab in Zen Browser by its numeric tab ID. Use browser_get_tabs first to find the correct tab ID.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    tabId: {
+                        type: 'number',
+                        description: 'The numeric ID of the tab to close, as returned by browser_get_tabs.',
+                    },
+                },
+                required: ['tabId'],
+            },
+        },
+    },
+});
+
+register({
+    name: 'browser_switch_tab',
+    displayName: 'Browser: Switch Tab',
+    description: 'Switch focus to a specific tab by its ID',
+    permissionLevel: 'SENSITIVE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_switch_tab',
+            description: 'Switch the active focus to a specific tab in Zen Browser by its numeric tab ID. Use browser_get_tabs first to find the correct tab ID.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    tabId: {
+                        type: 'number',
+                        description: 'The numeric ID of the tab to switch to, as returned by browser_get_tabs.',
+                    },
+                },
+                required: ['tabId'],
+            },
+        },
+    },
+});
+
+register({
+    name: 'browser_click',
+    displayName: 'Browser: Click Element',
+    description: 'Click an element on the current page',
+    permissionLevel: 'SENSITIVE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_click',
+            description: 'Click an element on the current page. Can locate elements by CSS selector, visible text, aria-label, or placeholder. Use browser_find_elements first to discover available elements.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    selector: {
+                        type: 'string',
+                        description: 'The element to click. Can be a CSS selector (e.g. "#submit-btn", ".login"), visible button/link text (e.g. "Sign in", "Search"), or aria-label (e.g. "Close dialog").',
+                    },
+                },
+                required: ['selector'],
+            },
+        },
+    },
+});
+
+register({
+    name: 'browser_type',
+    displayName: 'Browser: Type Text',
+    description: 'Type text into an input field on the current page',
+    permissionLevel: 'SENSITIVE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_type',
+            description: 'Type text into an input, textarea, or contenteditable element on the current page. Works with React, Vue, and vanilla forms. Replaces any existing value.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    selector: {
+                        type: 'string',
+                        description: 'The input element to type into. Can be a CSS selector, placeholder text, aria-label, or name attribute. e.g. "Search", "#email", "[name=\'query\']".',
+                    },
+                    text: {
+                        type: 'string',
+                        description: 'The text to type into the element.',
+                    },
+                    secret: {
+                        type: 'boolean',
+                        description: 'Set to true for passwords or sensitive values so the text is masked in tool output. Defaults to false.',
+                    },
+                },
+                required: ['selector', 'text'],
+            },
+        },
+    },
+});
+
+register({
+    name: 'browser_screenshot',
+    displayName: 'Browser: Screenshot',
+    description: 'Capture a screenshot of the current browser tab',
+    permissionLevel: 'SENSITIVE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_screenshot',
+            description: 'Capture a PNG screenshot of the visible area of the currently active Zen Browser tab and save it to disk. Returns the saved file path.',
+            parameters: {
+                type: 'object',
+                properties: {},
+                required: [],
+            },
+        },
+    },
+});
+
+// ── DANGEROUS ───────────────────────────────────────────────
+
+register({
+    name: 'browser_execute_js',
+    displayName: 'Browser: Execute JavaScript',
+    description: 'Execute arbitrary JavaScript in the current page context',
+    permissionLevel: 'DANGEROUS',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_execute_js',
+            description: 'Execute arbitrary JavaScript code in the context of the current active tab\'s page. Runs in the MAIN world (same as the page\'s own scripts). Use as a last resort when no dedicated browser tool can accomplish the task.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    code: {
+                        type: 'string',
+                        description: 'The JavaScript code to execute. The return value of the last expression will be returned as a string.',
+                    },
+                },
+                required: ['code'],
+            },
+        },
+    },
+});

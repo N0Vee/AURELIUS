@@ -1,4 +1,5 @@
 import { exec } from 'child_process';
+import { sendBrowserCommand, isBrowserConnected } from '../browser/bridge';
 import { promisify } from 'util';
 import { readdir, stat, access, readFile, writeFile, mkdir } from 'fs/promises';
 import { join, basename, extname, dirname } from 'path';
@@ -973,6 +974,130 @@ export async function executeTool(
                 } catch (e) {
                     return `Error killing process: ${e instanceof Error ? e.message : String(e)}`;
                 }
+            }
+
+            // ── BROWSER CONTROL (Zen Browser Extension) ───────────────
+
+            case 'browser_get_url': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                return await sendBrowserCommand('get_url');
+            }
+
+            case 'browser_get_tabs': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                return await sendBrowserCommand('get_tabs');
+            }
+
+            case 'browser_get_content': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                return await sendBrowserCommand('get_content');
+            }
+
+            case 'browser_find_elements': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                const filter = args.filter != null ? String(args.filter) : undefined;
+                return await sendBrowserCommand('find_elements', filter ? { filter } : {});
+            }
+
+            case 'browser_scroll': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                return await sendBrowserCommand('scroll', {
+                    direction: args.direction ?? 'down',
+                    amount:    args.amount    ?? 300,
+                    selector:  args.selector  ?? undefined,
+                    x:         args.x         ?? undefined,
+                    y:         args.y         ?? undefined,
+                });
+            }
+
+            case 'browser_go_back': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                return await sendBrowserCommand('go_back');
+            }
+
+            case 'browser_go_forward': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                return await sendBrowserCommand('go_forward');
+            }
+
+            case 'browser_reload': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                return await sendBrowserCommand('reload');
+            }
+
+            case 'browser_navigate': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                const url = String(args.url ?? '').trim();
+                if (!url) return 'Error: No URL provided.';
+                return await sendBrowserCommand('navigate', { url });
+            }
+
+            case 'browser_new_tab': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                return await sendBrowserCommand('new_tab', { url: args.url ?? undefined });
+            }
+
+            case 'browser_close_tab': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                const tabId = Number(args.tabId);
+                if (!Number.isFinite(tabId)) return 'Error: No valid tabId provided.';
+                return await sendBrowserCommand('close_tab', { tabId });
+            }
+
+            case 'browser_switch_tab': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                const tabId = Number(args.tabId);
+                if (!Number.isFinite(tabId)) return 'Error: No valid tabId provided.';
+                return await sendBrowserCommand('switch_tab', { tabId });
+            }
+
+            case 'browser_click': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                const selector = String(args.selector ?? '').trim();
+                if (!selector) return 'Error: No selector provided.';
+                return await sendBrowserCommand('click', { selector });
+            }
+
+            case 'browser_type': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                const selector = String(args.selector ?? '').trim();
+                const text     = String(args.text     ?? '');
+                const secret   = Boolean(args.secret  ?? false);
+                if (!selector) return 'Error: No selector provided.';
+                return await sendBrowserCommand('type', { selector, text, secret });
+            }
+
+            case 'browser_screenshot': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+
+                // Extension returns a base64 PNG data URL — save it to disk
+                const dataUrl = await sendBrowserCommand('screenshot');
+                if (!dataUrl.startsWith('data:image/')) {
+                    return `Error: Unexpected screenshot response: ${dataUrl.slice(0, 80)}`;
+                }
+
+                const settings  = getSettings();
+                const saveDir   = settings.screenshotSavePath;
+                const base64    = dataUrl.replace(/^data:image\/png;base64,/, '');
+                const buffer    = Buffer.from(base64, 'base64');
+                const fileName  = `browser-screenshot-${Date.now()}.png`;
+                const filePath  = join(saveDir, fileName);
+
+                try {
+                    await mkdir(saveDir, { recursive: true });
+                    await writeFile(filePath, buffer);
+                } catch (e) {
+                    return `Error saving screenshot: ${e instanceof Error ? e.message : String(e)}`;
+                }
+
+                return `Browser screenshot saved to: ${filePath}`;
+            }
+
+            case 'browser_execute_js': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                const code = String(args.code ?? '').trim();
+                if (!code) return 'Error: No JavaScript code provided.';
+                return await sendBrowserCommand('execute_js', { code });
             }
 
             default:

@@ -1,0 +1,49 @@
+{
+  "manifest_version": 2,
+  "name": "Aurelius Browser Control",
+  "version": "1.0.0",
+  "description": "Connects Zen Browser to the Aurelius AI assistant for intelligent browser automation.",
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "aurelius-browser-control@aurelius",
+      "strict_min_version": "91.0"
+    }
+  },
+
+  "content_security_policy": "script-src 'self'; connect-src ws://localhost:* wss://localhost:*",
+
+  "permissions": ["tabs", "activeTab", "scripting", "storage", "<all_urls>"],
+
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": true
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+
+  "browser_action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "96": "icons/icon-96.png",
+      "128": "icons/icon-128.png"
+    },
+    "default_title": "Aurelius Browser Control"
+  },
+
+  "icons": {
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  }
+}

@@ -3,6 +3,7 @@ import { streamChatCompletion } from '../llm/provider';
 import { getOpenAITools, getTool, canAutoExecute } from '../tools/registry';
 import { executeTool } from '../tools/executor';
 import { waitForConfirmation } from '../tools/pending';
+import { isBrowserConnected } from '../browser/bridge';
 import { ChatMessageSchema } from '@aurelius/shared-schema';
 import type { ChatMessage } from '@aurelius/shared-schema';
 import { z } from 'zod';
@@ -55,7 +56,15 @@ async function* agentLoop(
 ): AsyncGenerator<string, void, unknown> {
     // Work on a mutable copy so we can append tool results
     const messages: ChatMessage[] = [...initialMessages];
-    const tools = getOpenAITools();
+
+    // Only include browser tools if the extension is currently connected.
+    // Without this guard, 16 extra tool schemas are sent to the LLM on every
+    // request, bloating the context and causing smaller models to hang.
+    const browserConnected = isBrowserConnected();
+    const tools = getOpenAITools().filter((t) => {
+        if (t.function.name.startsWith('browser_')) return browserConnected;
+        return true;
+    });
 
     // Track how many times each tool has been called this response
     const toolCallCounts = new Map<string, number>();
