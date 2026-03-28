@@ -25,3 +25,5 @@ tauri = { version = "2.10.3", features = ["tray-icon", "image-png"] }
 tauri-plugin-shell = "2"
 tauri-plugin-log = "2"
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-localhost = "2"
+portpicker = "0.1"

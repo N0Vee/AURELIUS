@@ -2,10 +2,12 @@
 
 import { useState, FormEvent, useRef, useEffect, useCallback } from 'react';
 import { useChat } from '@/hooks/useChat';
+import { useScreenCapture } from '@/hooks/useScreenCapture';
+import { useTauriDrag } from '@/hooks/useTauriDrag';
 import { ChatWindow } from './components/ChatWindow';
 import { VoiceVisual } from './components/VoiceVisual';
 import { Button } from '@/components/ui';
-import { Send, Square, Trash2, MessageSquare, Mic, Minus } from 'lucide-react';
+import { Send, Square, Trash2, MessageSquare, Mic, Minus, Monitor, ClipboardPaste, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useIsDesktop } from '@/components/layout/DesktopContext';
@@ -23,10 +25,13 @@ function OverlayTitleBar({
     onModeChange: (m: Mode) => void;
     onHide: () => void;
 }) {
+    const onDrag = useTauriDrag();
+
     return (
         <div
             data-tauri-drag-region
-            className="flex items-center justify-between px-3 py-2 border-b border-[var(--overlay-border)] bg-[var(--overlay-bg)] select-none shrink-0"
+            onMouseDown={onDrag}
+            className="flex items-center justify-between px-3 py-2 border-b border-[var(--overlay-border)] bg-[var(--overlay-bg)] select-none cursor-grab shrink-0"
         >
             {/* Brand — draggable */}
             <div data-tauri-drag-region className="flex items-center gap-2 pointer-events-none">
@@ -152,6 +157,7 @@ export default function ChatPage() {
         approveToolCall,
         rejectToolCall,
     } = useChat();
+    const { pendingImage, captureScreen, pasteFromClipboard, clearPendingImage } = useScreenCapture();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     // ── Hide overlay window (Tauri only) ──────────────────────────────────────
@@ -170,14 +176,30 @@ export default function ChatPage() {
 
     const handleSubmit = (e: FormEvent | React.KeyboardEvent) => {
         e.preventDefault();
-        if (input.trim() && !isLoading) {
-            sendMessage(input);
+        if ((input.trim() || pendingImage) && !isLoading) {
+            const text = input.trim() || (pendingImage ? 'What do you see in this screenshot?' : '');
+            const images = pendingImage ? [pendingImage] : undefined;
+            sendMessage(text, images);
             setInput('');
+            clearPendingImage();
             if (textareaRef.current) {
                 textareaRef.current.style.height = 'auto';
             }
         }
     };
+
+    const handlePaste = useCallback((e: React.ClipboardEvent) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of Array.from(items)) {
+            if (item.type.startsWith('image/')) {
+                e.preventDefault();
+                // Use the async clipboard API which the hook already handles
+                pasteFromClipboard();
+                return;
+            }
+        }
+    }, [pasteFromClipboard]);
 
     // ── Overlay layout measurements ───────────────────────────────────────────
     // In overlay mode the title bar is ~40px, input+toggle ~110px total
@@ -266,25 +288,67 @@ export default function ChatPage() {
                                         : 'glass-strong',
                                 )}
                             >
+                                {/* ── Image preview ────────────────────────── */}
+                                {pendingImage && (
+                                    <div className="relative mb-2 inline-block">
+                                        <img
+                                            src={pendingImage}
+                                            alt="Captured screenshot"
+                                            className="max-h-32 rounded-lg border border-[var(--border)] object-contain"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={clearPendingImage}
+                                            className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--dangerous)] text-white shadow-md hover:brightness-110 transition"
+                                        >
+                                            <X size={11} />
+                                        </button>
+                                    </div>
+                                )}
+
                                 <textarea
                                     ref={textareaRef}
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
+                                    onPaste={handlePaste}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' && !e.shiftKey) {
                                             e.preventDefault();
                                             handleSubmit(e);
                                         }
                                     }}
-                                    placeholder="Ask Aurelius anything..."
+                                    placeholder={pendingImage ? 'Ask about this screenshot...' : 'Ask Aurelius anything...'}
                                     disabled={isLoading}
                                     rows={1}
                                     className="w-full bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none focus:outline-none text-sm sm:text-base leading-relaxed"
                                 />
                                 <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border)]">
-                                    <p className="hidden sm:block text-xs text-[var(--text-muted)]">
-                                        Enter to send
-                                    </p>
+                                    <div className="flex items-center gap-1">
+                                        {/* Screen capture */}
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={captureScreen}
+                                            disabled={isLoading}
+                                            title="Capture screen"
+                                            className="text-[var(--text-muted)] hover:text-[var(--accent)]"
+                                        >
+                                            <Monitor size={14} />
+                                        </Button>
+                                        {/* Paste from clipboard */}
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={pasteFromClipboard}
+                                            disabled={isLoading}
+                                            title="Paste image from clipboard"
+                                            className="text-[var(--text-muted)] hover:text-[var(--accent)]"
+                                        >
+                                            <ClipboardPaste size={14} />
+                                        </Button>
+                                    </div>
                                     <div className="flex items-center gap-2 ml-auto">
                                         {/* Clear in overlay mode lives here */}
                                         {isDesktop && (
@@ -313,7 +377,7 @@ export default function ChatPage() {
                                             <Button
                                                 type="submit"
                                                 size="sm"
-                                                disabled={!input.trim()}
+                                                disabled={!input.trim() && !pendingImage}
                                                 className="gap-1"
                                             >
                                                 <Send size={13} /> Send

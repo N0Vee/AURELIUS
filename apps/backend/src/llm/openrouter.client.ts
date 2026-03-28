@@ -4,7 +4,7 @@ import type { LLMStreamEvent, OpenAITool } from './types';
 
 interface OpenRouterMessage {
     role: 'system' | 'user' | 'assistant' | 'tool';
-    content: string;
+    content: string | Array<{type: string; text?: string; image_url?: {url: string}}>;
     tool_calls?: Array<{
         id: string;
         type: 'function';
@@ -54,6 +54,16 @@ function toOpenRouterMessages(messages: ChatMessage[]): OpenRouterMessage[] {
                     arguments: tc.function.arguments,
                 },
             }));
+        }
+
+        if (m.images && m.images.length > 0) {
+            msg.content = [
+                { type: 'text', text: m.content },
+                ...m.images.map(img => ({
+                    type: 'image_url' as const,
+                    image_url: { url: img },
+                })),
+            ];
         }
 
         if (m.tool_call_id) {
@@ -201,7 +211,20 @@ export async function* streamChatCompletion(
 
     if (!response.ok) {
         const errorText = await response.text().catch(() => response.statusText);
-        throw new Error(`OpenRouter error: ${response.status} ${errorText}`);
+        // Try to extract the nested error message for cleaner downstream formatting
+        let errorMessage = `OpenRouter error ${response.status}`;
+        try {
+            const parsed = JSON.parse(errorText);
+            if (parsed?.error?.message) {
+                errorMessage = `OpenRouter ${response.status}: ${parsed.error.message}`;
+            } else {
+                errorMessage = `OpenRouter ${response.status}: ${errorText}`;
+            }
+        } catch {
+            errorMessage = `OpenRouter ${response.status}: ${errorText || response.statusText}`;
+        }
+        console.error('[OpenRouter] API error:', errorMessage);
+        throw new Error(errorMessage);
     }
 
     const reader = response.body?.getReader();

@@ -82,7 +82,12 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
                             message.content.includes('unavailable') ||
                             message.content.includes('rate limit') ||
                             message.content.includes('invalid or expired') ||
-                            message.content.includes('API key')
+                            message.content.includes('API key') ||
+                            message.content.includes('Insufficient') ||
+                            message.content.includes('credits') ||
+                            message.content.includes('Model not found') ||
+                            message.content.includes('backend unavailable') ||
+                            message.content.includes('Connection was')
                         );
     const [copied, setCopied] = useState(false);
 
@@ -341,6 +346,21 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
                                 >
                                     {message.content}
                                 </ReactMarkdown>
+
+                                {/* User-attached images (screen capture / clipboard paste) */}
+                                {message.images && message.images.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {message.images.map((img, i) => (
+                                            <img
+                                                key={i}
+                                                src={img}
+                                                alt={`Attached screenshot ${i + 1}`}
+                                                className="max-w-full max-h-48 rounded-lg border border-white/20 object-contain cursor-pointer hover:brightness-110 transition"
+                                                onClick={() => window.open(img, '_blank')}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
 
                                 {/* Streaming cursor */}
                                 {isStreaming && (

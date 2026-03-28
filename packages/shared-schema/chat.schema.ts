@@ -20,6 +20,7 @@ export const ChatMessageSchema = z.object({
     id: z.string().uuid().default(() => crypto.randomUUID()),
     role: MessageRoleSchema,
     content: z.string(),
+    images: z.array(z.string()).optional(),            // base64 data URLs for vision
     tool_calls: z.array(ToolCallSchema).optional(),   // set by assistant when calling a tool
     tool_call_id: z.string().optional(),              // set on role:'tool' result messages
     audio_url: z.string().optional(),

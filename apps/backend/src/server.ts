@@ -1,16 +1,22 @@
 import { Elysia } from 'elysia';
+import process from 'process';
 import { cors } from '@elysiajs/cors';
 import { env } from './config/env';
 import { initSettings } from './config/settings.store';
 import { chatStreamRoute } from './sse/chat.stream';
 import { settingsRoute } from './routes/settings.route';
 import { toolsRoute } from './routes/tools.route';
+import { automationsRoute } from './routes/automations.route';
+import { initAutomations } from './tools/automations';
 import { browserBridgeRoute, isBrowserConnected } from './browser/bridge';
 import { getSystemStats } from './debug/hardware';
 import { getActiveProviderLabel } from './llm/provider';
 
 // Load settings.json (merges on top of env defaults) before handling any requests
 await initSettings();
+
+// Load custom automations and register them as tools
+await initAutomations();
 
 const app = new Elysia()
     // CORS for Next.js frontend & Tauri desktop shell
@@ -57,6 +63,9 @@ const app = new Elysia()
     // Tool confirmation (approve / reject)
     .use(toolsRoute)
 
+    // Custom automations CRUD + test
+    .use(automationsRoute)
+
     // Chat routes
     .use(chatStreamRoute)
 
@@ -76,3 +85,25 @@ console.log(`
 `);
 
 export type App = typeof app;
+
+// ── Graceful shutdown ────────────────────────────────────────────────────────
+// On Windows the Tauri sidecar kill() call sends a hard TerminateProcess, so
+// SIGTERM may never arrive — but we register both signals so the port is
+// always released cleanly when the signal IS delivered (dev mode, Linux, macOS)
+// and to make `bun run dev:backend` stoppable with Ctrl+C without leaving a
+// zombie process holding port 3001.
+
+function shutdown(signal: string) {
+    console.log(`\n[Server] Received ${signal} — stopping server and releasing port ${env.PORT}…`);
+    try {
+        app.stop();
+        console.log('[Server] Server stopped cleanly.');
+    } catch (err) {
+        console.warn('[Server] Error during stop:', err);
+    } finally {
+        process.exit(0);
+    }
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));

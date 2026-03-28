@@ -21,20 +21,31 @@ const MAX_STREAM_RETRIES   = 1; // retry a failed LLM call once per iteration
  */
 function formatStreamError(raw: string): string {
     const r = raw.toLowerCase();
-    if (r.includes('input stream') || r.includes('stream') || r.includes('network') || r.includes('socket')) {
-        return 'Connection was interrupted. Please try again.';
+
+    // Payment / credits — surface clearly so the user knows to top up
+    if (r.includes('402') || r.includes('insufficient credits') || r.includes('payment required') || r.includes('quota') || r.includes('billing')) {
+        return 'Insufficient API credits. Please add credits at https://openrouter.ai/settings/credits or switch to a free model.';
     }
-    if (r.includes('401') || r.includes('unauthorized')) {
+    if (r.includes('401') || r.includes('unauthorized') || r.includes('invalid api key') || r.includes('missing auth')) {
         return 'API key is invalid or expired. Check your settings.';
     }
     if (r.includes('429') || r.includes('rate limit')) {
         return 'Rate limit reached. Please wait a moment and try again.';
     }
+    if (r.includes('404') || r.includes('not found') || r.includes('no endpoints found')) {
+        return 'Model not found or unavailable. Check the model name in settings.';
+    }
     if (r.includes('500') || r.includes('503') || r.includes('502')) {
         return 'The AI service is temporarily unavailable. Please try again.';
     }
-    if (raw.length > 120) {
-        return 'Something went wrong. Please try again.';
+    if (r.includes('input stream') || r.includes('network') || r.includes('socket') || r.includes('econnrefused') || r.includes('enotfound')) {
+        return 'Connection was interrupted. Please try again.';
+    }
+
+    // For long unrecognised errors, log full text but return a useful summary
+    if (raw.length > 200) {
+        console.error('[formatStreamError] Long error truncated. Full text:', raw);
+        return raw.slice(0, 200) + '…';
     }
     return raw;
 }
@@ -69,8 +80,11 @@ async function* agentLoop(
     // Track how many times each tool has been called this response
     const toolCallCounts = new Map<string, number>();
 
+    let lastIterationYieldedText = false;
+
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
         let textContent = '';
+        lastIterationYieldedText = false;
         let toolCallEvent: { id: string; name: string; arguments: string } | null = null;
 
         // ── Stream one LLM turn (with retry if stream dies before any content) ──
@@ -83,6 +97,7 @@ async function* agentLoop(
                 for await (const event of streamChatCompletion(messages, tools)) {
                     if (event.type === 'text') {
                         hasYieldedContent = true;
+                        lastIterationYieldedText = true;
                         textContent += event.content;
                         yield `event: chunk\ndata: ${JSON.stringify({ content: event.content })}\n\n`;
                     } else if (event.type === 'tool_call') {
@@ -97,7 +112,8 @@ async function* agentLoop(
                     streamAttempt++;
                     textContent   = '';
                     toolCallEvent = null;
-                    console.warn(`[AgentLoop] Stream error on attempt ${streamAttempt} — retrying in 800ms… (${msg})`);
+                    console.warn(`[AgentLoop] Stream error on attempt ${streamAttempt} — retrying in 800ms…`);
+                    console.warn(`[AgentLoop] Error detail:`, msg);
                     await Bun.sleep(800);
                 } else {
                     // Content was already streamed or retries exhausted — propagate
@@ -249,8 +265,10 @@ async function* agentLoop(
     // ── Safety net: if the loop ended after a tool call (hit iteration cap
     //    or the last iteration was a tool call), do one final LLM call
     //    WITHOUT tools to force a text summary so the user never gets silence.
+    //    Skip if the last iteration already streamed text to the client —
+    //    that means the LLM gave a proper text answer after the tool result.
     const lastMsg = messages[messages.length - 1];
-    if (lastMsg?.role === 'tool') {
+    if (lastMsg?.role === 'tool' && !lastIterationYieldedText) {
         messages.push({
             id: crypto.randomUUID(),
             role: 'system',
@@ -286,9 +304,14 @@ export const chatStreamRoute = new Elysia({ prefix: '/chat' })
                 yield* agentLoop(messages);
                 yield `event: done\ndata: ${JSON.stringify({ status: 'complete' })}\n\n`;
             } catch (error) {
-                const message = error instanceof Error ? error.message : 'Unknown error';
-                console.error('[ChatStream] Error:', message);
-                yield `event: error\ndata: ${JSON.stringify({ error: message })}\n\n`;
+                const rawMessage = error instanceof Error ? error.message : 'Unknown error';
+                console.error('[ChatStream] Raw error:', rawMessage);
+                if (error instanceof Error && error.stack) {
+                    console.error('[ChatStream] Stack:', error.stack);
+                }
+                // Re-format at the SSE boundary so the user sees a helpful message
+                const userMessage = formatStreamError(rawMessage);
+                yield `event: error\ndata: ${JSON.stringify({ error: userMessage })}\n\n`;
             }
         },
         {

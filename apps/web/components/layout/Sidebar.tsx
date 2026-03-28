@@ -12,6 +12,7 @@ import {
     ShieldCheck,
     Cpu,
     Globe,
+    Workflow,
 } from 'lucide-react';
 
 interface NavItem {
@@ -28,6 +29,7 @@ const navItems: NavItem[] = [
 
 const accountItems: NavItem[] = [
     { href: '/settings', label: 'Settings', icon: <Settings size={20} /> },
+    { href: '/settings/automations', label: 'Automations', icon: <Workflow size={20} /> },
 ];
 
 export function Sidebar() {

@@ -9,6 +9,7 @@ import type { LLMStreamEvent, OpenAITool } from './types';
 interface OllamaMessage {
     role: 'system' | 'user' | 'assistant' | 'tool';
     content: string;
+    images?: string[];
     tool_calls?: Array<{
         function: {
             name: string;
@@ -60,6 +61,11 @@ function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
                     arguments: JSON.parse(tc.function.arguments) as Record<string, unknown>,
                 },
             }));
+        }
+
+        // User message with image attachments (vision)
+        if (m.images && m.images.length > 0) {
+            msg.images = m.images.map(img => img.replace(/^data:image\/[^;]+;base64,/, ''));
         }
 
         // Tool result message

@@ -10,6 +10,7 @@ export interface ChatMessage {
     id: string;
     role: 'user' | 'assistant';
     content: string;
+    images?: string[];
     timestamp: number;
     isStreaming?: boolean;
 }
@@ -59,19 +60,25 @@ function rejectUrl (base: string, pendingId: string) { return `${base}/api/tools
 
 function formatError(raw: string): string {
     const r = raw.toLowerCase();
-    if (r.includes('input stream') || r.includes('stream') || r.includes('network') || r.includes('socket')) {
-        return 'Connection was interrupted.';
+    if (r.includes('402') || r.includes('insufficient credits') || r.includes('payment required') || r.includes('quota') || r.includes('billing')) {
+        return 'Insufficient API credits. Add credits at openrouter.ai/settings/credits or switch to a free model.';
     }
-    if (r.includes('401') || r.includes('unauthorized')) {
+    if (r.includes('401') || r.includes('unauthorized') || r.includes('invalid api key') || r.includes('missing auth')) {
         return 'API key is invalid or expired. Check your Settings.';
     }
     if (r.includes('429') || r.includes('rate limit')) {
         return 'Rate limit reached. Please wait a moment.';
     }
+    if (r.includes('404') || r.includes('not found') || r.includes('no endpoints found')) {
+        return 'Model not found or unavailable. Check the model name in Settings.';
+    }
     if (r.includes('500') || r.includes('503') || r.includes('502')) {
         return 'The AI service is temporarily unavailable.';
     }
-    if (raw.length > 120) return 'Something went wrong.';
+    if (r.includes('input stream') || r.includes('network') || r.includes('socket') || r.includes('econnrefused') || r.includes('enotfound')) {
+        return 'Connection was interrupted.';
+    }
+    if (raw.length > 200) return raw.slice(0, 200) + '…';
     return raw;
 }
 
@@ -319,13 +326,14 @@ export function useChat(options: UseChatOptions = {}) {
     // Send message — creates bubbles then runs the stream
     // ----------------------------------------------------------
     const sendMessage = useCallback(
-        async (content: string) => {
+        async (content: string, images?: string[]) => {
             if (!content.trim() || isLoading) return;
 
             const userMessage: ChatMessage = {
                 id: crypto.randomUUID(),
                 role: 'user',
                 content: content.trim(),
+                ...(images && images.length > 0 ? { images } : {}),
                 timestamp: Date.now(),
             };
 
@@ -342,7 +350,16 @@ export function useChat(options: UseChatOptions = {}) {
             // Build context — chat messages only (no tool_confirm / tool_auto)
             const history = [...messages, userMessage]
                 .filter((m): m is ChatMessage => m.role === 'user' || m.role === 'assistant')
-                .map(m => ({ role: m.role, content: m.content }));
+                .map(m => {
+                    const entry: { role: string; content: string; images?: string[] } = {
+                        role: m.role,
+                        content: m.content,
+                    };
+                    if (m.images && m.images.length > 0) {
+                        entry.images = m.images;
+                    }
+                    return entry;
+                });
 
             // Store for retry
             lastHistoryRef.current     = history;

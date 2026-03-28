@@ -19,8 +19,12 @@ export interface ToolDefinition {
 
 const _registry = new Map<string, ToolDefinition>();
 
-function register(def: ToolDefinition): void {
+export function register(def: ToolDefinition): void {
     _registry.set(def.name, def);
+}
+
+export function unregister(name: string): void {
+    _registry.delete(name);
 }
 
 export function getTool(name: string): ToolDefinition | undefined {

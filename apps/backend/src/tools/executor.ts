@@ -5,6 +5,7 @@ import { readdir, stat, access, readFile, writeFile, mkdir } from 'fs/promises';
 import { join, basename, extname, dirname } from 'path';
 import { tavily } from '@tavily/core';
 import { getSettings } from '../config/settings.store';
+import { getAutomationByName, executeAutomation } from './automations';
 
 const execAsync = promisify(exec);
 
@@ -1100,8 +1101,15 @@ export async function executeTool(
                 return await sendBrowserCommand('execute_js', { code });
             }
 
-            default:
+            default: {
+                // ── Check for custom automation ──────────────────────
+                const automation = getAutomationByName(name);
+                if (automation) {
+                    console.log(`[Executor] Delegating to custom automation: "${name}"`);
+                    return await executeAutomation(automation, args);
+                }
                 return `Error: Unknown tool "${name}". No implementation found.`;
+            }
         }
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
