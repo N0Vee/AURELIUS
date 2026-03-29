@@ -46,7 +46,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM5NzlFRDVFN0VFRTZCMTQKUldRVWErNitYdTE1T1pYSGZFakR2NG00VXlWNW5zQmVaZ2pVMGpqWmdsanh0Vm9qYUlpeG4wdnQK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM5NzlFRDVFN0VFRTZCMTQKUldRVWErNStYdTE1T1pYSGZFakR2NG00VXlWNW5zQmVaZ2pVMGpqWmdsanh0Vm9qYUlpeG4wdnQK",
       "endpoints": [
         "https://github.com/N0Vee/AURELIUS/releases/latest/download/latest.json"
       ]

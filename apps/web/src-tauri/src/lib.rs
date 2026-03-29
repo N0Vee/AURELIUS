@@ -92,6 +92,12 @@ pub fn run() {
                         .permission("autostart:allow-enable")
                         .permission("autostart:allow-disable")
                         .permission("autostart:allow-is-enabled")
+                        .permission("updater:default")
+                        .permission("updater:allow-check")
+                        .permission("updater:allow-download")
+                        .permission("updater:allow-install")
+                        .permission("updater:allow-download-and-install")
+                        .permission("process:default")
                         .remote(localhost_url.to_string())
                         .window("main"),
                 )?;
