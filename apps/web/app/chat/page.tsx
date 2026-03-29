@@ -5,6 +5,7 @@ import { useChat } from '@/hooks/useChat';
 import { useScreenCapture } from '@/hooks/useScreenCapture';
 import { useTauriDrag } from '@/hooks/useTauriDrag';
 import { ChatWindow } from './components/ChatWindow';
+
 import { VoiceVisual } from './components/VoiceVisual';
 import { Button } from '@/components/ui';
 import { Send, Square, Trash2, MessageSquare, Mic, Minus, Monitor, ClipboardPaste, X } from 'lucide-react';
@@ -273,6 +274,7 @@ export default function ChatPage() {
                                 : 'bottom-20 sm:bottom-24 left-0 sm:left-64 sm:px-6',
                         )}
                     >
+
                         <div
                             className={cn(
                                 'mx-auto pointer-events-auto',

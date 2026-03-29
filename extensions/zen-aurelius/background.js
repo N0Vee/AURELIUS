@@ -256,26 +256,23 @@ async function handleCommand({ id, action, params = {} }) {
       }
 
       // ── Execute arbitrary JS in the page context ──────────
-      // Uses scripting.executeScript with world:'MAIN' so the code
-      // runs in the page's own JS environment (not the extension sandbox).
+      // Uses tabs.executeScript (MV2-compatible, works on all Firefox/Zen versions).
+      // Code is evaluated as a script — the value of the LAST EXPRESSION is returned.
+      // Do NOT use `return` in the code string; end with the expression you want back.
+      // e.g. good: "document.title"
+      //      bad:  "return document.title"
 
       case "execute_js": {
         const code = String(params.code ?? "").trim();
         if (!code) throw new Error("No code provided");
 
         const tab = await getActiveTab();
-        const injectionResults = await browser.scripting.executeScript({
-          target: { tabId: tab.id },
-          world: "MAIN",
-          func: (codeStr) => {
-            // Runs inside the PAGE context, not the extension sandbox
-            // eslint-disable-next-line no-new-func
-            return Function('"use strict";\n' + codeStr)();
-          },
-          args: [code],
+        const results = await browser.tabs.executeScript(tab.id, {
+          code: code,
+          runAt: "document_idle",
         });
 
-        const val = injectionResults?.[0]?.result;
+        const val = results?.[0];
         result =
           val !== undefined && val !== null
             ? String(val)
@@ -288,6 +285,7 @@ async function handleCommand({ id, action, params = {} }) {
       case "get_content":
       case "find_elements":
       case "click":
+      case "hover_and_click":
       case "type":
       case "scroll":
       case "hover":

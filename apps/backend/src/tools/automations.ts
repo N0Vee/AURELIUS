@@ -483,6 +483,123 @@ export async function executeAutomation(
     return formatExecutionSummary(automation, stepResults);
 }
 
+// ── Step event types emitted by the streaming generator ──────────────────────
+
+export type AutomationStepEvent =
+    | {
+          type: 'step_done';
+          stepIndex: number;
+          totalSteps: number;
+          toolName: string;
+          displayName: string;
+          result: string;
+          success: boolean;
+          skipped: boolean;
+      }
+    | {
+          type: 'done';
+          summary: string;
+      };
+
+/**
+ * Streaming variant of executeAutomation.
+ *
+ * Yields an `AutomationStepEvent` for each step as it completes, then a
+ * final `done` event with the full formatted summary.  Callers (e.g. the
+ * SSE agent loop) can forward each `step_done` event to the frontend as an
+ * individual `tool_auto` card so the user sees every step in real-time
+ * instead of the automation running as a silent black box.
+ */
+export async function* streamAutomationSteps(
+    automation: CustomAutomation,
+    inputArgs: Record<string, unknown>,
+): AsyncGenerator<AutomationStepEvent> {
+    console.log(`[Automations] Streaming "${automation.displayName}" with ${automation.steps.length} step(s)`);
+
+    const stepResults = new Map<string, StepResult>();
+    let previousResult: StepResult | undefined;
+    const totalSteps = automation.steps.length;
+
+    for (let i = 0; i < totalSteps; i++) {
+        const step = automation.steps[i];
+
+        // ── Condition check ──────────────────────────────────────────────
+        if (!shouldRunStep(step, previousResult)) {
+            const skipped: StepResult = {
+                stepId: step.id,
+                toolName: step.toolName,
+                label: step.label,
+                success: false,
+                result: `Skipped (condition: ${step.condition ?? 'always'})`,
+                skipped: true,
+            };
+            stepResults.set(step.id, skipped);
+            console.log(`[Automations]   ⏭ Step "${step.label}" skipped`);
+            previousResult = skipped;
+
+            yield {
+                type: 'step_done',
+                stepIndex: i,
+                totalSteps,
+                toolName: step.toolName,
+                displayName: step.label || step.toolName,
+                result: skipped.result,
+                success: false,
+                skipped: true,
+            };
+            continue;
+        }
+
+        // ── Resolve template args ────────────────────────────────────────
+        const resolvedArgs = resolveTemplateArgs(step.args, inputArgs, stepResults);
+        console.log(`[Automations]   ▶ Step "${step.label}" → ${step.toolName}(${JSON.stringify(resolvedArgs)})`);
+
+        // ── Execute tool ─────────────────────────────────────────────────
+        let result: string;
+        let success: boolean;
+
+        try {
+            result = await executeTool(step.toolName, resolvedArgs);
+            success = true;
+            console.log(`[Automations]   ✔ Step "${step.label}" succeeded`);
+        } catch (err) {
+            result = err instanceof Error ? err.message : String(err);
+            success = false;
+            console.warn(`[Automations]   ✘ Step "${step.label}" failed: ${result}`);
+        }
+
+        const stepResult: StepResult = {
+            stepId: step.id,
+            toolName: step.toolName,
+            label: step.label,
+            success,
+            result,
+            skipped: false,
+        };
+
+        stepResults.set(step.id, stepResult);
+        previousResult = stepResult;
+
+        // ── Yield step completion event ──────────────────────────────────
+        yield {
+            type: 'step_done',
+            stepIndex: i,
+            totalSteps,
+            toolName: step.toolName,
+            displayName: step.label || step.toolName,
+            result,
+            success,
+            skipped: false,
+        };
+    }
+
+    // ── Final summary ────────────────────────────────────────────────────
+    yield {
+        type: 'done',
+        summary: formatExecutionSummary(automation, stepResults),
+    };
+}
+
 /**
  * Register all enabled automations as tools in the tool registry.
  */

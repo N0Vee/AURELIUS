@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia';
 import { streamChatCompletion } from '../llm/provider';
 import { getOpenAITools, getTool, canAutoExecute } from '../tools/registry';
 import { executeTool } from '../tools/executor';
+import { getAutomationByName, streamAutomationSteps } from '../tools/automations';
 import { waitForConfirmation } from '../tools/pending';
 import { isBrowserConnected } from '../browser/bridge';
 import { ChatMessageSchema } from '@aurelius/shared-schema';
@@ -226,14 +227,52 @@ async function* agentLoop(
             } else {
                 console.log(`[AgentLoop] Tool "${tool.name}" approved — executing`);
 
-                toolResult = await executeTool(tool.name, parsedArgs);
+                // ── Custom automation → stream each step live ─────────────
+                const automation = getAutomationByName(tool.name);
 
-                yield `event: tool_executed\ndata: ${JSON.stringify({
-                    pendingId: confirmId,
-                    toolName: tool.name,
-                    displayName: tool.displayName,
-                    result: toolResult,
-                })}\n\n`;
+                if (automation) {
+                    console.log(`[AgentLoop] Streaming automation steps for "${tool.name}"`);
+                    toolResult = '';
+
+                    for await (const event of streamAutomationSteps(automation, parsedArgs)) {
+                        if (event.type === 'step_done') {
+                            // Emit each step as its own tool_auto card in the UI
+                            yield `event: tool_auto\ndata: ${JSON.stringify({
+                                toolName: event.toolName,
+                                displayName: event.skipped
+                                    ? `⏭ ${event.displayName} (skipped)`
+                                    : event.success
+                                        ? event.displayName
+                                        : `✘ ${event.displayName} (failed)`,
+                                result: event.result,
+                                automationStep: true,
+                                stepIndex: event.stepIndex + 1,
+                                totalSteps: event.totalSteps,
+                            })}\n\n`;
+                        } else if (event.type === 'done') {
+                            toolResult = event.summary;
+                        }
+                    }
+
+                    // Resolve the original automation confirmation card
+                    yield `event: tool_executed\ndata: ${JSON.stringify({
+                        pendingId: confirmId,
+                        toolName: tool.name,
+                        displayName: tool.displayName,
+                        result: toolResult,
+                    })}\n\n`;
+
+                } else {
+                    // ── Normal tool ───────────────────────────────────────
+                    toolResult = await executeTool(tool.name, parsedArgs);
+
+                    yield `event: tool_executed\ndata: ${JSON.stringify({
+                        pendingId: confirmId,
+                        toolName: tool.name,
+                        displayName: tool.displayName,
+                        result: toolResult,
+                    })}\n\n`;
+                }
             }
         }
 

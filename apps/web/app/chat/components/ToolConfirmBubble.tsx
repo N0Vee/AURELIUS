@@ -179,16 +179,20 @@ export function ToolAutoBubble({ message }: ToolAutoBubbleProps) {
             transition={{ duration: 0.2 }}
             className="flex justify-start"
         >
-            <div className="flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full bg-[var(--safe-glow)] border border-[var(--safe)]/30 max-w-full sm:max-w-[420px] min-w-0">
-                <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--safe)]/20">
+            <div className="flex items-start gap-2 sm:gap-2.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-2xl bg-[var(--safe-glow)] border border-[var(--safe)]/30 max-w-full sm:max-w-[480px] min-w-0">
+                <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--safe)]/20 mt-0.5">
                     <Check size={11} className="text-[var(--safe)]" />
                 </div>
-                <span className="text-xs text-[var(--safe)] font-medium shrink-0">
-                    Used <span className="font-semibold">{message.displayName}</span>
-                </span>
-                <span className="text-xs text-[var(--text-muted)] truncate min-w-0">
-                    → {message.result}
-                </span>
+                <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-xs text-[var(--safe)] font-medium">
+                        Used <span className="font-semibold">{message.displayName}</span>
+                    </span>
+                    {message.result && (
+                        <span className="text-xs text-[var(--text-muted)] break-all whitespace-pre-wrap">
+                            {message.result}
+                        </span>
+                    )}
+                </div>
             </div>
         </motion.div>
     );

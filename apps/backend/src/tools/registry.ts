@@ -50,6 +50,32 @@ export function canAutoExecute(tool: ToolDefinition): boolean {
 // ── SAFE ────────────────────────────────────────────────────
 
 register({
+    name: 'wait',
+    displayName: 'Wait',
+    description: 'Pause execution for a specified number of milliseconds (max 15 000 ms). Use this inside automations when a web page needs extra time to finish loading before the next step.',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'wait',
+            description: 'Pause execution for a given number of milliseconds. Useful in automations to wait for a slow or dynamic web page to finish loading before interacting with it.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    ms: {
+                        type: 'number',
+                        description: 'How many milliseconds to wait. Maximum is 15 000 (15 seconds). Default is 1 500.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+});
+
+
+
+register({
     name: 'get_time',
     displayName: 'Get Current Time',
     description: 'Get the current time in Bangkok timezone (ICT UTC+7)',
@@ -706,6 +732,38 @@ register({
 });
 
 // ── SENSITIVE ───────────────────────────────────────────────
+
+register({
+    name: 'browser_hover_and_click',
+    displayName: 'Browser: Hover & Click',
+    description: 'Hover over a parent row element first (revealing hidden buttons), wait, then fire a full mouse-event sequence on the target. Essential for SPAs like YouTube Music where play buttons only appear on hover.',
+    permissionLevel: 'SENSITIVE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'browser_hover_and_click',
+            description: 'Hover over a parent row element to reveal hover-dependent UI (e.g. inline play buttons on YouTube Music), then click the specified target element with a full mouse event sequence. Use this instead of browser_click when the target button is hidden until the row is hovered.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    row_selector: {
+                        type: 'string',
+                        description: 'CSS selector for the parent row to hover over first, e.g. "ytmusic-responsive-list-item-renderer". This makes hidden child buttons become visible.',
+                    },
+                    selector: {
+                        type: 'string',
+                        description: 'CSS selector for the element to click after hovering, e.g. "#play-button".',
+                    },
+                    delay_ms: {
+                        type: 'number',
+                        description: 'Milliseconds to wait between hover and click (default 400, max 3000). Increase if the UI animation is slow.',
+                    },
+                },
+                required: ['selector'],
+            },
+        },
+    },
+});
 
 register({
     name: 'browser_navigate',

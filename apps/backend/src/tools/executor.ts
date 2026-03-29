@@ -9,6 +9,48 @@ import { getAutomationByName, executeAutomation } from './automations';
 
 const execAsync = promisify(exec);
 
+// ── Windows PATH helper ───────────────────────────────────────────────────────
+// The backend sidecar inherits a stale PATH from Tauri (launched before Scoop
+// updated the user PATH). This helper reads User + Machine PATH directly from
+// the Windows registry so spawned processes always see the full PATH.
+
+let _cachedWindowsPath: string | null = null;
+
+async function getWindowsPath(): Promise<string> {
+    if (_cachedWindowsPath) return _cachedWindowsPath;
+
+    try {
+        const { stdout: userPath } = await execAsync(
+            `powershell.exe -NoProfile -Command "[System.Environment]::GetEnvironmentVariable('PATH','User')"`,
+            { timeout: 5000 },
+        );
+        const { stdout: machinePath } = await execAsync(
+            `powershell.exe -NoProfile -Command "[System.Environment]::GetEnvironmentVariable('PATH','Machine')"`,
+            { timeout: 5000 },
+        );
+        // Extra known paths that Scoop/Bun add to the user profile
+        const extra = [
+            'C:\\Users\\UsEr\\scoop\\shims',
+            'C:\\Users\\UsEr\\scoop\\apps\\mpv\\current',
+            'C:\\Users\\UsEr\\scoop\\apps\\mpv\\0.41.0',
+            'C:\\Users\\UsEr\\.bun\\bin',
+        ].join(';');
+
+        _cachedWindowsPath = `${extra};${userPath.trim()};${machinePath.trim()}`;
+    } catch {
+        // Fallback: just prepend known paths to current PATH
+        _cachedWindowsPath = [
+            'C:\\Users\\UsEr\\scoop\\shims',
+            'C:\\Users\\UsEr\\scoop\\apps\\mpv\\current',
+            'C:\\Users\\UsEr\\scoop\\apps\\mpv\\0.41.0',
+            'C:\\Users\\UsEr\\.bun\\bin',
+            process.env.PATH ?? '',
+        ].join(';');
+    }
+
+    return _cachedWindowsPath;
+}
+
 const DEFAULT_APP_SEARCH_ROOTS = [
     'C:\\Program Files',
     'C:\\Program Files (x86)',
@@ -629,6 +671,14 @@ export async function executeTool(
 
             // ── SAFE ──────────────────────────────────────────────────
 
+            case 'wait': {
+                const raw = Number(args.ms ?? 1500);
+                const ms  = Math.min(Math.max(Math.round(raw), 0), 15_000);
+                await Bun.sleep(ms);
+                return `Waited ${ms} ms.`;
+            }
+
+
             case 'get_time': {
                 const now = new Date();
                 const time = now.toLocaleTimeString('en-US', {
@@ -1057,6 +1107,19 @@ export async function executeTool(
                 const selector = String(args.selector ?? '').trim();
                 if (!selector) return 'Error: No selector provided.';
                 return await sendBrowserCommand('click', { selector });
+            }
+
+            case 'browser_hover_and_click': {
+                if (!isBrowserConnected()) return 'Error: Browser extension is not connected. Make sure the Aurelius extension is installed and enabled in Zen Browser.';
+                const selector    = String(args.selector     ?? '').trim();
+                const rowSelector = String(args.row_selector ?? '').trim();
+                const delayMs     = Number(args.delay_ms     ?? 400);
+                if (!selector) return 'Error: No selector provided.';
+                return await sendBrowserCommand('hover_and_click', {
+                    selector,
+                    row_selector: rowSelector || undefined,
+                    delay_ms: delayMs,
+                });
             }
 
             case 'browser_type': {
