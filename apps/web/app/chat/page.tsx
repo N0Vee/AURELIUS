@@ -16,7 +16,6 @@ import { useIsDesktop } from '@/components/layout/DesktopContext';
 import Image from 'next/image';
 
 type Mode = 'chat' | 'voice';
-
 // ── Overlay title-bar (Tauri only) ────────────────────────────────────────────
 function OverlayTitleBar({
     mode,
