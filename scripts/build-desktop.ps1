@@ -52,7 +52,19 @@ if (-not $ready) {
     Write-Host "   Timed out waiting for file lock - continuing anyway." -ForegroundColor Yellow
 }
 
-# Step 4: Run tauri build
+# Step 4: Load signing key for updater artifacts
+$keyFile = Join-Path $PSScriptRoot "..\.tauri\aurelius.key"
+if (Test-Path $keyFile) {
+    Write-Host ">> Loading signing key from .tauri/aurelius.key..." -ForegroundColor Cyan
+    $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content $keyFile -Raw
+    $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
+    Write-Host "   Key loaded." -ForegroundColor Green
+} else {
+    Write-Host ">> WARNING: .tauri/aurelius.key not found - updater signing will fail." -ForegroundColor Yellow
+    Write-Host "   Run: cd apps/web; bun run tauri signer generate -w ../../.tauri/aurelius.key --ci" -ForegroundColor Yellow
+}
+
+# Step 5: Run tauri build
 Write-Host ">> Building Tauri app..." -ForegroundColor Cyan
 bun run --filter "@aurelius/web" tauri build
 
@@ -63,5 +75,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ""
 Write-Host ">> Build complete!" -ForegroundColor Green
-Write-Host "   Installer: apps\web\src-tauri\target\release\bundle\nsis\Aurelius_0.1.0_x64-setup.exe" -ForegroundColor Green
+$version = (Get-Content "apps\web\src-tauri\tauri.conf.json" | ConvertFrom-Json).version
+$installerPath = "apps\web\src-tauri\target\release\bundle\nsis\Aurelius_" + $version + "_x64-setup.exe"
+Write-Host "   Installer: $installerPath" -ForegroundColor Green
 exit 0
