@@ -165,6 +165,7 @@ export async function* streamChatCompletion(
     messages: ChatMessage[],
     tools?: OpenAITool[],
     systemPromptOverride?: string,
+    trace?: import('./types').TraceContext,
 ): AsyncGenerator<LLMStreamEvent, void, unknown> {
     const settings = getSettings();
 
@@ -184,6 +185,7 @@ export async function* streamChatCompletion(
         '[OpenRouter] model:', settings.openrouterModel,
         '| tools:', tools?.length ?? 0,
         '| temp:', settings.temperature,
+        '| session:', trace?.sessionId ?? '—',
     );
 
     const body: Record<string, unknown> = {
@@ -198,6 +200,38 @@ export async function* streamChatCompletion(
         body.tools = tools;
         body.tool_choice = 'auto';
     }
+
+    // ── OpenRouter Broadcast trace metadata ───────────────────────────────────
+    // session_id groups every turn of the same chat session together in
+    // observability platforms (Langfuse, PostHog, etc.).  Sampling is
+    // deterministic per session_id so you always see complete conversations.
+    if (trace?.sessionId) {
+        body.session_id = trace.sessionId;
+    }
+
+    // Identifies the application in the observability dashboard
+    body.user = 'aurelius-local';
+
+    // trace field carries arbitrary metadata forwarded to all Broadcast destinations
+    const traceMeta: Record<string, string> = {
+        environment: process.env.NODE_ENV ?? 'production',
+        generation_name: 'chat',
+    };
+
+    // Use the session title as the human-readable trace name.
+    // Skip the placeholder 'New Chat' — it is replaced automatically after the
+    // first message saves, so the next turn will carry the real title.
+    if (trace?.sessionTitle && trace.sessionTitle !== 'New Chat') {
+        traceMeta.trace_name = trace.sessionTitle;
+    }
+
+    // Active skill name becomes the span that groups LLM calls in a session
+    traceMeta.span_name = trace?.skillName
+        ? `Skill: ${trace.skillName}`
+        : 'Default';
+
+    body.trace = traceMeta;
+    // ─────────────────────────────────────────────────────────────────────────
 
     const response = await fetch(`${settings.openrouterBaseUrl}/chat/completions`, {
         method: 'POST',
@@ -350,9 +384,10 @@ export async function chatCompletion(
     messages: ChatMessage[],
     tools?: OpenAITool[],
     systemPromptOverride?: string,
+    trace?: import('./types').TraceContext,
 ): Promise<string> {
     let result = '';
-    for await (const event of streamChatCompletion(messages, tools, systemPromptOverride)) {
+    for await (const event of streamChatCompletion(messages, tools, systemPromptOverride, trace)) {
         if (event.type === 'text') result += event.content;
     }
     return result;

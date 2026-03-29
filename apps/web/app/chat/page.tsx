@@ -161,6 +161,8 @@ export default function ChatPage() {
         renameSession,
     } = useChatSessions();
 
+    const activeSession = sessions.find((s) => s.id === activeSessionId);
+
     const {
         messages,
         isLoading,
@@ -170,7 +172,10 @@ export default function ChatPage() {
         clearMessages,
         approveToolCall,
         rejectToolCall,
-    } = useChat({ sessionId: activeSessionId });
+    } = useChat({
+        sessionId:    activeSessionId,
+        sessionTitle: activeSession?.title,
+    });
     const { pendingImage, captureScreen, pasteFromClipboard, clearPendingImage } = useScreenCapture();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 

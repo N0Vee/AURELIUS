@@ -12,6 +12,8 @@ import { z } from 'zod';
 
 const ChatRequestSchema = z.object({
     messages: z.array(ChatMessageSchema),
+    session_id:    z.string().max(128).optional(),
+    session_title: z.string().max(128).optional(),
 });
 
 const MAX_TOOL_ITERATIONS = 10;
@@ -66,6 +68,8 @@ function formatStreamError(raw: string): string {
  */
 async function* agentLoop(
     initialMessages: ChatMessage[],
+    sessionId?: string,
+    sessionTitle?: string,
 ): AsyncGenerator<string, void, unknown> {
     // Work on a mutable copy so we can append tool results
     const messages: ChatMessage[] = [...initialMessages];
@@ -84,6 +88,22 @@ async function* agentLoop(
         });
         console.log(`[AgentLoop] Skill active: ${activeSkill.name} (${activeSkill.displayName})`);
     }
+
+    // ── Build OpenRouter Broadcast trace context ──────────────────────────────
+    // Assembled here because agentLoop is the first place that knows both the
+    // session identifiers (passed from the route) and the active skill name
+    // (resolved just above).  The trace is forwarded through the provider layer
+    // and attached to every OpenRouter API call so all turns of a conversation
+    // appear as a single grouped trace in observability dashboards.
+    const trace: import('../llm/types').TraceContext = {
+        sessionId,
+        // Skip the placeholder title — the real title is auto-derived from the
+        // first user message and will be present from the second turn onward.
+        sessionTitle: sessionTitle && sessionTitle !== 'New Chat'
+            ? sessionTitle
+            : undefined,
+        skillName: activeSkill?.displayName,
+    };
 
     // Only include browser tools if the extension is currently connected.
     // Without this guard, 16 extra tool schemas are sent to the LLM on every
@@ -111,7 +131,7 @@ async function* agentLoop(
         while (!streamDone) {
             let hasYieldedContent = false;
             try {
-                for await (const event of streamChatCompletion(messages, tools)) {
+                for await (const event of streamChatCompletion(messages, tools, undefined, trace)) {
                     if (event.type === 'text') {
                         hasYieldedContent = true;
                         lastIterationYieldedText = true;
@@ -332,7 +352,7 @@ async function* agentLoop(
         });
 
         try {
-            for await (const event of streamChatCompletion(messages, undefined)) {
+            for await (const event of streamChatCompletion(messages, undefined, undefined, trace)) {
                 if (event.type === 'text' && event.content) {
                     yield `event: chunk\ndata: ${JSON.stringify({ content: event.content })}\n\n`;
                 }
@@ -351,12 +371,12 @@ export const chatStreamRoute = new Elysia({ prefix: '/chat' })
     .post(
         '/stream',
         async function* ({ body }) {
-            const { messages } = ChatRequestSchema.parse(body);
+            const { messages, session_id, session_title } = ChatRequestSchema.parse(body);
 
             yield `event: connected\ndata: ${JSON.stringify({ status: 'connected' })}\n\n`;
 
             try {
-                yield* agentLoop(messages);
+                yield* agentLoop(messages, session_id, session_title);
                 yield `event: done\ndata: ${JSON.stringify({ status: 'complete' })}\n\n`;
             } catch (error) {
                 const rawMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -371,7 +391,9 @@ export const chatStreamRoute = new Elysia({ prefix: '/chat' })
         },
         {
             body: t.Object({
-                messages: t.Array(t.Any()),
+                messages:      t.Array(t.Any()),
+                session_id:    t.Optional(t.String()),
+                session_title: t.Optional(t.String()),
             }),
         }
     );

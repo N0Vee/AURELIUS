@@ -1,4 +1,19 @@
 // ============================================================
+// Trace Context
+// Passed from the chat stream route through to the OpenRouter client
+// so every API call carries Broadcast-compatible observability metadata.
+// ============================================================
+
+export interface TraceContext {
+    /** Chat session UUID — groups all turns of a conversation in the dashboard */
+    sessionId?: string;
+    /** Human-readable session title derived from the first user message */
+    sessionTitle?: string;
+    /** Display name of the currently active skill (e.g. "Code Assistant") */
+    skillName?: string;
+}
+
+// ============================================================
 // LLM Stream Event
 // Unified event type yielded by both Ollama and OpenRouter clients
 // ============================================================

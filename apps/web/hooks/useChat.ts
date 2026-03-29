@@ -96,10 +96,17 @@ interface UseChatOptions {
      * - Clear the session's DB messages when clearMessages() is called
      */
     sessionId?: string | null;
+    /**
+     * Human-readable title of the active session.
+     * Forwarded to the backend and included in OpenRouter Broadcast trace
+     * metadata as `trace_name` so observability dashboards show meaningful
+     * conversation labels instead of raw model names.
+     */
+    sessionTitle?: string | null;
 }
 
 export function useChat(options: UseChatOptions = {}) {
-    const { apiUrl, sessionId } = options;
+    const { apiUrl, sessionId, sessionTitle } = options;
 
     const [messages, setMessages]   = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -227,7 +234,11 @@ export function useChat(options: UseChatOptions = {}) {
                         response = await fetch(url, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ messages: history }),
+                            body: JSON.stringify({
+                                messages: history,
+                                ...(sessionId   ? { session_id:    sessionId }   : {}),
+                                ...(sessionTitle ? { session_title: sessionTitle } : {}),
+                            }),
                             signal: abortControllerRef.current.signal,
                         });
 
@@ -404,7 +415,7 @@ export function useChat(options: UseChatOptions = {}) {
                 setIsLoading(false);
             }
         },
-        [apiUrl],
+        [apiUrl, sessionId, sessionTitle],
     );
 
     // ----------------------------------------------------------

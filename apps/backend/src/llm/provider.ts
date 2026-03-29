@@ -1,6 +1,6 @@
 import { getSettings } from '../config/settings.store';
 import type { ChatMessage } from '@aurelius/shared-schema';
-import type { LLMStreamEvent, OpenAITool } from './types';
+import type { LLMStreamEvent, OpenAITool, TraceContext } from './types';
 
 import {
     streamChatCompletion as ollamaStream,
@@ -37,18 +37,20 @@ export async function* streamChatCompletion(
     messages: ChatMessage[],
     tools?: OpenAITool[],
     systemPromptOverride?: string,
+    trace?: TraceContext,
 ): AsyncGenerator<LLMStreamEvent, void, unknown> {
     const { llmProvider } = getSettings();
 
     switch (llmProvider) {
         case 'openrouter':
             console.log('[Provider] Routing to → OpenRouter');
-            yield* openRouterStream(messages, tools, systemPromptOverride);
+            yield* openRouterStream(messages, tools, systemPromptOverride, trace);
             break;
 
         case 'ollama':
         default:
             console.log('[Provider] Routing to → Ollama');
+            // Ollama is local — trace metadata is OpenRouter-specific, skip it
             yield* ollamaStream(messages, tools, systemPromptOverride);
             break;
     }
@@ -61,12 +63,13 @@ export async function chatCompletion(
     messages: ChatMessage[],
     tools?: OpenAITool[],
     systemPromptOverride?: string,
+    trace?: TraceContext,
 ): Promise<string> {
     const { llmProvider } = getSettings();
 
     switch (llmProvider) {
         case 'openrouter':
-            return openRouterChat(messages, tools, systemPromptOverride);
+            return openRouterChat(messages, tools, systemPromptOverride, trace);
 
         case 'ollama':
         default:
