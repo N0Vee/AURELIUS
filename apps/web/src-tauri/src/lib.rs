@@ -22,7 +22,9 @@ pub fn run() {
         portpicker::pick_unused_port().expect("failed to find an unused port")
     };
 
-    let mut builder = tauri::Builder::default();
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build());
 
     // ── Localhost plugin (PRODUCTION ONLY) ────────────────────────────────
     // Serves the embedded frontend (`frontendDist`) on a real HTTP server

@@ -1,6 +1,9 @@
 # user settings (contains API keys — never commit)
 apps/backend/settings.json
 
+# Tauri signing keys (NEVER commit the private key)
+.tauri/
+
 # dependencies
 # ใช้ pattern นี้จะครอบคลุม node_modules ทุกที่ (ทั้ง root, apps/web, apps/backend)
 **/node_modules/

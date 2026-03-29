@@ -1,0 +1,94 @@
+# ============================================================
+# Aurelius — Build & Release Workflow
+# ============================================================
+# Triggers:
+#   • Push a tag like  v0.2.0  →  builds the desktop app and
+#     creates a GitHub Release with the installer + updater
+#     artifacts (latest.json, .nsis.zip, .nsis.zip.sig).
+#   • Manual dispatch from the Actions tab.
+#
+# Secrets required:
+#   TAURI_SIGNING_PRIVATE_KEY      — content of .tauri/aurelius.key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — (optional, leave empty if key has no password)
+# ============================================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  # Tauri update signing
+  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      # ── Checkout ──────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Setup Bun ─────────────────────────────────────────────
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # ── Setup Node (needed by some npm deps / tauri action) ──
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      # ── Setup Rust ────────────────────────────────────────────
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      # ── Rust cache ────────────────────────────────────────────
+      - name: Cache Rust build artifacts
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './apps/web/src-tauri -> target'
+
+      # ── Install all workspace dependencies ────────────────────
+      - name: Install dependencies
+        run: bun install
+
+      # ── Build the backend sidecar ─────────────────────────────
+      # The sidecar must exist before `tauri build` because it is
+      # declared in externalBin. We compile the Elysia backend to
+      # a standalone Bun binary.
+      - name: Build backend sidecar
+        run: bun run build:sidecar
+
+      # ── Build Tauri app (NSIS installer + updater artifacts) ──
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/web
+          tagName: v__VERSION__
+          releaseName: 'Aurelius v__VERSION__'
+          releaseBody: |
+            ## What's new
+
+            See the [full changelog](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) for details.
+
+            ---
+
+            ### Install / Update
+            - **New install:** Download `Aurelius_x64-setup.exe` below and run it.
+            - **Existing users:** The app will prompt you to update automatically.
+          releaseDraft: true
+          prerelease: false
+          tauriScript: bun run tauri

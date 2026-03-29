@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { DesktopDetector, useIsDesktop } from '@/components/layout/DesktopContext';
+import { UpdateNotification } from '@/components/layout/UpdateNotification';
 
 // ── Web Layout ────────────────────────────────────────────────────────────────
 function WebLayout({ children }: { children: React.ReactNode }) {
@@ -13,6 +14,7 @@ function WebLayout({ children }: { children: React.ReactNode }) {
             <main className="sm:ml-64 flex-1 h-screen overflow-auto">
                 {children}
             </main>
+            <UpdateNotification />
         </div>
     );
 }
@@ -24,6 +26,7 @@ function OverlayLayout({ children }: { children: React.ReactNode }) {
             <main className="flex-1 h-screen overflow-hidden">
                 {children}
             </main>
+            <UpdateNotification />
         </div>
     );
 }
