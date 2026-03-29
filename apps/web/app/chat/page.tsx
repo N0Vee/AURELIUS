@@ -7,7 +7,6 @@ import { useScreenCapture } from '@/hooks/useScreenCapture';
 import { useTauriDrag } from '@/hooks/useTauriDrag';
 import { ChatWindow } from './components/ChatWindow';
 import { SessionSidebar } from './components/SessionSidebar';
-
 import { VoiceVisual } from './components/VoiceVisual';
 import { Button } from '@/components/ui';
 import { Send, Square, Trash2, MessageSquare, Mic, Minus, Monitor, ClipboardPaste, X } from 'lucide-react';

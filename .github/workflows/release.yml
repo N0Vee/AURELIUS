@@ -2,31 +2,33 @@
 # Aurelius — Build & Release Workflow
 # ============================================================
 # Triggers:
-#   • Push a tag like  v0.2.0  →  builds the desktop app and
-#     creates a GitHub Release with the installer + updater
-#     artifacts (latest.json, .nsis.zip, .nsis.zip.sig).
+#   • Push to the `release` branch  →  builds the desktop app
+#     and creates a draft GitHub Release with the installer +
+#     updater artifacts (latest.json, .nsis.zip, .nsis.zip.sig).
 #   • Manual dispatch from the Actions tab.
 #
-# Secrets required:
-#   TAURI_SIGNING_PRIVATE_KEY      — content of .tauri/aurelius.key
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — (optional, leave empty if key has no password)
+# The tauri-action automatically:
+#   1. Reads the version from tauri.conf.json
+#   2. Creates a git tag  (e.g. v0.2.0)
+#   3. Creates a draft GitHub Release
+#   4. Uploads the .exe installer, updater bundle, signatures,
+#      and latest.json to the release
+#
+# Secrets required (Settings → Secrets → Actions):
+#   TAURI_SIGNING_PRIVATE_KEY          — content of .tauri/aurelius.key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — leave empty if key has no password
 # ============================================================
 
 name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - release
   workflow_dispatch:
 
-env:
-  # Tauri update signing
-  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
 jobs:
-  build-and-release:
+  publish-tauri:
     runs-on: windows-latest
 
     permissions:
@@ -57,7 +59,7 @@ jobs:
       - name: Cache Rust build artifacts
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './apps/web/src-tauri -> target'
+          workspaces: "./apps/web/src-tauri -> target"
 
       # ── Install all workspace dependencies ────────────────────
       - name: Install dependencies
@@ -72,13 +74,16 @@ jobs:
 
       # ── Build Tauri app (NSIS installer + updater artifacts) ──
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/web
+          tauriScript: bun run tauri
           tagName: v__VERSION__
-          releaseName: 'Aurelius v__VERSION__'
+          releaseName: "Aurelius v__VERSION__"
           releaseBody: |
             ## What's new
 
@@ -91,4 +96,4 @@ jobs:
             - **Existing users:** The app will prompt you to update automatically.
           releaseDraft: true
           prerelease: false
-          tauriScript: bun run tauri
+          updaterJsonPreferNsis: true
