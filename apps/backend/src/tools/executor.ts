@@ -6,6 +6,8 @@ import { join, basename, extname, dirname } from 'path';
 import { tavily } from '@tavily/core';
 import { getSettings } from '../config/settings.store';
 import { getAutomationByName, executeAutomation } from './automations';
+import { saveMemory, deleteMemory } from '../memory/memory.store';
+import { searchMemories, embedAndCacheMemory } from '../memory/memory.search';
 
 const execAsync = promisify(exec);
 
@@ -1162,6 +1164,54 @@ export async function executeTool(
                 const code = String(args.code ?? '').trim();
                 if (!code) return 'Error: No JavaScript code provided.';
                 return await sendBrowserCommand('execute_js', { code });
+            }
+
+            // ── Memory Tools ──────────────────────────────────────────
+
+            case 'remember_this': {
+                const content  = String(args.content ?? '').trim();
+                const type     = String(args.type ?? 'note') as 'fact' | 'preference' | 'task' | 'note';
+                if (!content) return 'Error: No content provided to remember.';
+
+                const entry = await saveMemory({
+                    type,
+                    content,
+                    lifecycle: 'long_term',
+                    metadata:  { source: 'tool_call' },
+                });
+
+                // Embed asynchronously — don't block the response
+                embedAndCacheMemory(entry).catch(console.warn);
+
+                return `Saved to memory [${type}]: "${content}" (id: ${entry.id})`;
+            }
+
+            case 'search_memories': {
+                const query = String(args.query ?? '').trim();
+                if (!query) return 'Error: No search query provided.';
+
+                const results = await searchMemories(query, 8, 0.2);
+                if (results.length === 0) {
+                    return 'No relevant memories found.';
+                }
+
+                const lines = results.map((r, i) => {
+                    const score = Math.round(r.similarity * 100);
+                    return `${i + 1}. [${r.entry.type}] ${r.entry.content} (id: ${r.entry.id}, match: ${score}%)`;
+                });
+
+                return `Found ${results.length} relevant memories:\n${lines.join('\n')}`;
+            }
+
+            case 'forget_memory': {
+                const id     = String(args.id ?? '').trim();
+                const reason = String(args.reason ?? '').trim();
+                if (!id) return 'Error: No memory ID provided.';
+
+                const deleted = await deleteMemory(id);
+                if (!deleted) return `No memory found with id: ${id}`;
+
+                return `Memory deleted${reason ? ` (reason: ${reason})` : ''}: ${id}`;
             }
 
             default: {

@@ -584,8 +584,8 @@ export default function SkillsPage() {
         // Fetch full content before opening editor
         try {
             const res = await fetch(
-                `http://127.0.0.1:3001/api/skills/${name}`,
-            ).catch(() => fetch(`http://localhost:3001/api/skills/${name}`));
+                `http://127.0.0.1:4243/api/skills/${name}`,
+            ).catch(() => fetch(`http://localhost:4243/api/skills/${name}`));
 
             if (res.ok) {
                 const skill = await res.json() as { name: string; content: string };

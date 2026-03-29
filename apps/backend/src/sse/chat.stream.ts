@@ -6,6 +6,8 @@ import { executeTool } from '../tools/executor';
 import { getAutomationByName, streamAutomationSteps } from '../tools/automations';
 import { waitForConfirmation } from '../tools/pending';
 import { isBrowserConnected } from '../browser/bridge';
+import { searchMemories } from '../memory/memory.search';
+import { extractAndSaveMemories } from '../memory/memory.extractor';
 import { ChatMessageSchema } from '@aurelius/shared-schema';
 import type { ChatMessage } from '@aurelius/shared-schema';
 import { z } from 'zod';
@@ -89,6 +91,32 @@ async function* agentLoop(
         console.log(`[AgentLoop] Skill active: ${activeSkill.name} (${activeSkill.displayName})`);
     }
 
+    // ── Memory injection ──────────────────────────────────────────────────────
+    // Search for relevant memories based on the user's latest message and inject
+    // them as a system context block so the LLM can reference past knowledge
+    // without the user needing to repeat themselves.
+    const lastUserMsg = [...initialMessages].reverse().find(m => m.role === 'user');
+    if (lastUserMsg?.content) {
+        try {
+            const relevantMemories = await searchMemories(lastUserMsg.content, 6, 0.2);
+            if (relevantMemories.length > 0) {
+                const memoryLines = relevantMemories
+                    .map(r => `- [${r.entry.type}] ${r.entry.content}`)
+                    .join('\n');
+                messages.unshift({
+                    id: crypto.randomUUID(),
+                    role: 'system',
+                    content: `## What you remember about the user\n${memoryLines}\n\nUse this context naturally in your response when relevant. Do not recite it back verbatim.`,
+                    timestamp: Date.now(),
+                });
+                console.log(`[AgentLoop] Injected ${relevantMemories.length} relevant memories`);
+            }
+        } catch (err) {
+            // Memory search is non-critical — never let it break the chat
+            console.warn('[AgentLoop] Memory search failed (non-fatal):', err);
+        }
+    }
+
     // ── Build OpenRouter Broadcast trace context ──────────────────────────────
     // Assembled here because agentLoop is the first place that knows both the
     // session identifiers (passed from the route) and the active skill name
@@ -139,6 +167,13 @@ async function* agentLoop(
                         yield `event: chunk\ndata: ${JSON.stringify({ content: event.content })}\n\n`;
                     } else if (event.type === 'tool_call') {
                         if (!toolCallEvent) toolCallEvent = event;
+                    } else if (event.type === 'usage') {
+                        yield `event: usage\ndata: ${JSON.stringify({
+                            promptTokens:     event.promptTokens,
+                            completionTokens: event.completionTokens,
+                            totalTokens:      event.totalTokens,
+                            model:            event.model,
+                        })}\n\n`;
                     }
                 }
                 streamDone = true;
@@ -328,10 +363,23 @@ async function* agentLoop(
             timestamp: Date.now(),
         });
 
+        // Tag tool results with [SUCCESS] / [FAILED] so the LLM can
+        // unambiguously tell whether the operation worked. This prevents
+        // the model from claiming success when the tool actually errored,
+        // and from calling redundant verification tools after a clear success.
+        const toolFailed =
+            toolResult.startsWith('Error:') ||
+            toolResult.startsWith('Error ') ||
+            /^(Tool execution was (rejected|timed out))/.test(toolResult);
+
+        const taggedResult = toolFailed
+            ? `[FAILED] ${toolResult}`
+            : `[SUCCESS] ${toolResult}`;
+
         messages.push({
             id: crypto.randomUUID(),
             role: 'tool',
-            content: toolResult,
+            content: taggedResult,
             tool_call_id: toolCallEvent.id,
             timestamp: Date.now(),
         });
@@ -342,6 +390,13 @@ async function* agentLoop(
     //    WITHOUT tools to force a text summary so the user never gets silence.
     //    Skip if the last iteration already streamed text to the client —
     //    that means the LLM gave a proper text answer after the tool result.
+    // ── Auto-extraction ───────────────────────────────────────────────────────
+    // Fire-and-forget: analyze the conversation and save any notable facts,
+    // preferences, or tasks the user shared. Never blocks the response.
+    extractAndSaveMemories(messages).catch(err =>
+        console.warn('[AgentLoop] Memory extraction failed (non-fatal):', err),
+    );
+
     const lastMsg = messages[messages.length - 1];
     if (lastMsg?.role === 'tool' && !lastIterationYieldedText) {
         messages.push({
@@ -355,6 +410,13 @@ async function* agentLoop(
             for await (const event of streamChatCompletion(messages, undefined, undefined, trace)) {
                 if (event.type === 'text' && event.content) {
                     yield `event: chunk\ndata: ${JSON.stringify({ content: event.content })}\n\n`;
+                } else if (event.type === 'usage') {
+                    yield `event: usage\ndata: ${JSON.stringify({
+                        promptTokens:     event.promptTokens,
+                        completionTokens: event.completionTokens,
+                        totalTokens:      event.totalTokens,
+                        model:            event.model,
+                    })}\n\n`;
                 }
             }
         } catch (err) {

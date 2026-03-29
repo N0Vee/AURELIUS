@@ -1277,7 +1277,7 @@ export default function AutomationsPage() {
                         <p className="text-[var(--text-secondary)] text-sm mb-4">{error}</p>
                         <p className="text-xs text-[var(--text-muted)]">
                             Make sure the backend is running on{' '}
-                            <code className="text-[var(--accent)]">localhost:3001</code>
+                            <code className="text-[var(--accent)]">localhost:4243</code>
                         </p>
                     </CardContent>
                 </Card>

@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSettings, type Settings } from '@/hooks/useSettings';
+import { useOpenRouterModels, isModelFree, formatContextLength } from '@/hooks/useOpenRouterModels';
+import { useAutostart } from '@/hooks/useAutostart';
 import { Container } from '@/components/layout';
 import {
     Card, CardHeader, CardTitle, CardDescription, CardContent,
@@ -28,30 +30,15 @@ import {
     Lock,
     Radio,
     Search,
+    ChevronDown,
     Image as ImageIcon,
     FolderOpen,
     HardDrive,
+    MonitorPlay,
+    Power,
 } from 'lucide-react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
-
-// ============================================================
-// Model Presets
-// ============================================================
-
-const MODEL_PRESETS = [
-    // Free tier
-    { id: 'meta-llama/llama-3.1-8b-instruct:free', label: 'Llama 3.1 8B',     tier: 'free' },
-    { id: 'meta-llama/llama-3.2-3b-instruct:free', label: 'Llama 3.2 3B',     tier: 'free' },
-    { id: 'google/gemma-2-9b-it:free',             label: 'Gemma 2 9B',        tier: 'free' },
-    { id: 'qwen/qwen-2-7b-instruct:free',          label: 'Qwen 2 7B',         tier: 'free' },
-    { id: 'mistralai/mistral-7b-instruct:free',    label: 'Mistral 7B',        tier: 'free' },
-    // Paid tier
-    { id: 'anthropic/claude-3.5-sonnet',           label: 'Claude 3.5 Sonnet', tier: 'paid' },
-    { id: 'openai/gpt-4o',                         label: 'GPT-4o',            tier: 'paid' },
-    { id: 'google/gemini-pro-1.5',                 label: 'Gemini Pro 1.5',    tier: 'paid' },
-    { id: 'meta-llama/llama-3.1-70b-instruct',     label: 'Llama 3.1 70B',    tier: 'paid' },
-] as const;
 
 // ============================================================
 // Small helpers
@@ -101,6 +88,33 @@ export default function SettingsPage() {
     const [showTavilyApiKey, setShowTavilyApiKey]   = useState(false);
     const [saveStatus, setSaveStatus]           = useState<'idle' | 'success' | 'error'>('idle');
     const [toolsSection, setToolsSection]       = useState<'search' | 'capture' | 'files' | 'apps'>('search');
+    const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+    const [modelSearch, setModelSearch]             = useState('');
+    const modelDropdownRef = useRef<HTMLDivElement>(null);
+
+    // ── Live OpenRouter model list ────────────────────────────────────────
+    const {
+        models: orModels,
+        isLoading: orModelsLoading,
+        error: orModelsError,
+        refetch: refetchModels,
+    } = useOpenRouterModels(settings?.openrouterApiKeySet ?? false);
+
+    // ── Autostart (Desktop only) ──────────────────────────────────────────
+    const {
+        isTauri,
+        enabled:   autostartEnabled,
+        isLoading: autostartLoading,
+        error:     autostartError,
+        toggle:    toggleAutostart,
+    } = useAutostart();
+    const [autostartSaving, setAutostartSaving] = useState(false);
+
+    const handleAutostartToggle = useCallback(async () => {
+        setAutostartSaving(true);
+        await toggleAutostart(!autostartEnabled);
+        setAutostartSaving(false);
+    }, [autostartEnabled, toggleAutostart]);
 
     // Effective values shown in every input field
     const form = useMemo(() => draft ?? settings, [draft, settings]);
@@ -119,6 +133,16 @@ export default function SettingsPage() {
         },
         [settings, clearSaveError, clearTestResult],
     );
+
+    useEffect(() => {
+        function handleClickOutside(e: MouseEvent) {
+            if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+                setModelDropdownOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     useEffect(() => {
         const ids = ['tools-search', 'tools-capture', 'tools-files', 'tools-apps'] as const;
@@ -214,7 +238,7 @@ export default function SettingsPage() {
                         <p className="text-[var(--text-secondary)] text-sm mb-4">{error}</p>
                         <p className="text-xs text-[var(--text-muted)]">
                             Make sure the backend is running on{' '}
-                            <code className="text-[var(--accent)]">localhost:3001</code>
+                            <code className="text-[var(--accent)]">localhost:4243</code>
                         </p>
                     </CardContent>
                 </Card>
@@ -524,56 +548,175 @@ export default function SettingsPage() {
                             {/* Model */}
                             <div className="space-y-2">
                                 <FieldLabel>Model</FieldLabel>
-                                <Input
-                                    value={form.openrouterModel}
-                                    onChange={e => update('openrouterModel', e.target.value)}
-                                    placeholder="meta-llama/llama-3.1-8b-instruct:free"
-                                />
+                                <div className="relative" ref={modelDropdownRef}>
+                                    {/* Trigger */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setModelDropdownOpen(v => !v);
+                                            setModelSearch('');
+                                        }}
+                                        className={cn(
+                                            'flex h-10 w-full items-center justify-between rounded-[var(--radius-md)] px-3 py-2',
+                                            'bg-[var(--surface)] border border-[var(--border)]',
+                                            'text-left text-sm transition-all',
+                                            modelDropdownOpen
+                                                ? 'ring-2 ring-[var(--accent)] border-transparent'
+                                                : 'hover:border-[var(--accent)]/40',
+                                        )}
+                                    >
+                                        <span className={cn(
+                                            'truncate',
+                                            form?.openrouterModel
+                                                ? 'text-[var(--text-primary)]'
+                                                : 'text-[var(--text-muted)]',
+                                        )}>
+                                            {form?.openrouterModel || 'meta-llama/llama-3.1-8b-instruct:free'}
+                                        </span>
+                                        <ChevronDown
+                                            size={16}
+                                            className={cn(
+                                                'shrink-0 ml-2 text-[var(--text-muted)] transition-transform duration-200',
+                                                modelDropdownOpen && 'rotate-180',
+                                            )}
+                                        />
+                                    </button>
 
-                                {/* Preset chips */}
-                                <div className="pt-1 space-y-2">
-                                    <p className="text-[11px] font-semibold text-[var(--safe)] uppercase tracking-wider">
-                                        Free
-                                    </p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {MODEL_PRESETS.filter(m => m.tier === 'free').map(m => (
-                                            <button
-                                                key={m.id}
-                                                type="button"
-                                                onClick={() => update('openrouterModel', m.id)}
-                                                className={cn(
-                                                    'px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all',
-                                                    form.openrouterModel === m.id
-                                                        ? 'bg-[var(--safe-glow)] border-[var(--safe)]/60 text-[var(--safe)]'
-                                                        : 'bg-[var(--surface)] border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--safe)]/40 hover:text-[var(--safe)]',
+                                    {/* Dropdown */}
+                                    {modelDropdownOpen && (
+                                        <div className="absolute z-50 mt-1 w-full rounded-[var(--radius-md)] border border-[var(--overlay-border)] bg-[var(--overlay-glass-strong)] shadow-[0_8px_32px_rgba(0,0,0,0.6)] overflow-hidden">
+                                            {/* Search bar */}
+                                            <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--overlay-border)]">
+                                                <Search size={14} className="text-[var(--text-muted)] shrink-0" />
+                                                <input
+                                                    autoFocus
+                                                    value={modelSearch}
+                                                    onChange={e => setModelSearch(e.target.value)}
+                                                    placeholder="Search models…"
+                                                    className="flex-1 bg-transparent text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
+                                                />
+                                                {modelSearch && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setModelSearch('')}
+                                                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
                                                 )}
-                                            >
-                                                {m.label}
-                                            </button>
-                                        ))}
-                                    </div>
+                                            </div>
 
-                                    <p className="text-[11px] font-semibold text-[var(--sensitive)] uppercase tracking-wider mt-2">
-                                        Paid
-                                    </p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {MODEL_PRESETS.filter(m => m.tier === 'paid').map(m => (
-                                            <button
-                                                key={m.id}
-                                                type="button"
-                                                onClick={() => update('openrouterModel', m.id)}
-                                                className={cn(
-                                                    'px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all',
-                                                    form.openrouterModel === m.id
-                                                        ? 'bg-[var(--sensitive-glow)] border-[var(--sensitive)]/60 text-[var(--sensitive)]'
-                                                        : 'bg-[var(--surface)] border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--sensitive)]/40 hover:text-[var(--sensitive)]',
+                                            {/* Options */}
+                                            <ul className="max-h-52 overflow-y-auto py-1">
+                                                {/* Loading state */}
+                                                {orModelsLoading && (
+                                                    <li className="flex items-center gap-2 px-3 py-3 text-sm text-[var(--text-muted)]">
+                                                        <Loader2 size={13} className="animate-spin shrink-0" />
+                                                        Loading models…
+                                                    </li>
                                                 )}
-                                            >
-                                                {m.label}
-                                            </button>
-                                        ))}
-                                    </div>
+
+                                                {/* No API key */}
+                                                {!orModelsLoading && orModelsError === 'no_key' && (
+                                                    <li className="px-3 py-3 text-sm text-[var(--text-muted)] italic text-center">
+                                                        Save an API key first to browse models.
+                                                    </li>
+                                                )}
+
+                                                {/* Real error */}
+                                                {!orModelsLoading && orModelsError && orModelsError !== 'no_key' && (
+                                                    <li className="px-3 py-3 space-y-2">
+                                                        <p className="text-xs text-[var(--dangerous)] flex items-center gap-1.5 font-medium">
+                                                            <AlertTriangle size={12} className="shrink-0" />
+                                                            Failed to load models
+                                                        </p>
+                                                        <p className="text-[11px] text-[var(--text-muted)] font-mono break-all leading-relaxed">
+                                                            {orModelsError}
+                                                        </p>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => void refetchModels()}
+                                                            className="text-xs text-[var(--accent)] hover:underline"
+                                                        >
+                                                            Retry
+                                                        </button>
+                                                    </li>
+                                                )}
+
+                                                {/* Model rows */}
+                                                {!orModelsLoading && !orModelsError && (() => {
+                                                    const filtered = orModels.filter(m =>
+                                                        m.name.toLowerCase().includes(modelSearch.toLowerCase()) ||
+                                                        m.id.toLowerCase().includes(modelSearch.toLowerCase())
+                                                    );
+                                                    if (filtered.length === 0) {
+                                                        return (
+                                                            <li className="px-3 py-3 text-sm text-[var(--text-muted)] italic text-center">
+                                                                No models match &ldquo;{modelSearch}&rdquo;
+                                                            </li>
+                                                        );
+                                                    }
+                                                    return filtered.map(m => {
+                                                        const free = isModelFree(m);
+                                                        const ctx  = formatContextLength(m.context_length);
+                                                        const isSelected = form?.openrouterModel === m.id;
+                                                        return (
+                                                            <li key={m.id}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        update('openrouterModel', m.id);
+                                                                        setModelDropdownOpen(false);
+                                                                    }}
+                                                                    className={cn(
+                                                                        'w-full flex items-center gap-3 px-3 py-2 text-sm text-left transition-colors',
+                                                                        isSelected
+                                                                            ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
+                                                                            : 'text-[var(--text-primary)] hover:bg-white/[0.06]',
+                                                                    )}
+                                                                >
+                                                                    {/* Name + ID stacked */}
+                                                                    <span className="flex-1 min-w-0">
+                                                                        <span className="block font-medium truncate">{m.name}</span>
+                                                                        <span className={cn(
+                                                                            'block text-[10px] font-mono truncate mt-0.5',
+                                                                            isSelected ? 'text-[var(--accent)]/70' : 'text-[var(--text-muted)]',
+                                                                        )}>
+                                                                            {m.id}
+                                                                        </span>
+                                                                    </span>
+                                                                    {/* Badges */}
+                                                                    <span className="flex items-center gap-1 shrink-0">
+                                                                        {ctx && (
+                                                                            <span className={cn(
+                                                                                'px-1.5 py-0.5 rounded text-[10px] font-medium border',
+                                                                                isSelected
+                                                                                    ? 'border-[var(--accent)]/40 text-[var(--accent)]/80 bg-transparent'
+                                                                                    : 'border-[var(--border)] text-[var(--text-muted)] bg-transparent',
+                                                                            )}>
+                                                                                {ctx}
+                                                                            </span>
+                                                                        )}
+                                                                        {free ? (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[var(--safe-glow)] border border-[var(--safe)]/40 text-[var(--safe)]">
+                                                                                FREE
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[var(--sensitive-glow,transparent)] border border-[var(--sensitive)]/30 text-[var(--sensitive)]">
+                                                                                PAID
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                </button>
+                                                            </li>
+                                                        );
+                                                    });
+                                                })()}
+                                            </ul>
+                                        </div>
+                                    )}
                                 </div>
+                                <FieldHint>Live model list from OpenRouter. Search by name or model ID.</FieldHint>
                             </div>
 
                             {/* Base URL */}
@@ -611,7 +754,7 @@ export default function SettingsPage() {
                                     <Input
                                         value={form.corsOrigin}
                                         onChange={e => update('corsOrigin', e.target.value)}
-                                        placeholder="http://localhost:3000"
+                                        placeholder="http://localhost:4242"
                                     />
                                     <FieldHint>
                                         The origin allowed to call the backend API.
@@ -639,7 +782,7 @@ export default function SettingsPage() {
                                     <Input
                                         value={form.openrouterSiteUrl}
                                         onChange={e => update('openrouterSiteUrl', e.target.value)}
-                                        placeholder="http://localhost:3000"
+                                        placeholder="http://localhost:4242"
                                     />
                                     <FieldHint>
                                         Sent as{' '}
@@ -1127,6 +1270,81 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
                 </section>
+
+                {/* ── Startup (Desktop only) ───────────────────── */}
+                {isTauri && (
+                    <section className="mb-6">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <MonitorPlay size={18} className="text-[var(--accent)]" />
+                                    Startup
+                                </CardTitle>
+                                <CardDescription>
+                                    Control whether Aurelius launches automatically when you log in to Windows.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex items-center justify-between gap-6 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] px-5 py-4">
+                                    {/* Label + description */}
+                                    <div className="flex items-center gap-4 min-w-0">
+                                        <div className={cn(
+                                            'flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] transition-colors',
+                                            autostartEnabled
+                                                ? 'bg-[var(--accent-muted)]'
+                                                : 'bg-[var(--surface-hover)]',
+                                        )}>
+                                            <Power size={18} className={autostartEnabled ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-medium text-[var(--text-primary)]">
+                                                Launch at login
+                                            </p>
+                                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                                                {autostartLoading
+                                                    ? 'Checking current status…'
+                                                    : autostartEnabled
+                                                        ? 'Aurelius starts automatically when Windows boots.'
+                                                        : 'Aurelius will not start automatically on login.'}
+                                            </p>
+                                            {autostartError && (
+                                                <p className="text-xs text-[var(--dangerous)] mt-1">{autostartError}</p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Toggle */}
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={autostartEnabled}
+                                        onClick={handleAutostartToggle}
+                                        disabled={autostartLoading || autostartSaving}
+                                        className={cn(
+                                            'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+                                            autostartEnabled
+                                                ? 'bg-[var(--accent)]'
+                                                : 'bg-[var(--surface-hover)] border border-[var(--border)]',
+                                        )}
+                                    >
+                                        <span className={cn(
+                                            'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform',
+                                            autostartEnabled ? 'translate-x-5' : 'translate-x-0',
+                                        )} />
+                                    </button>
+                                </div>
+
+                                <p className="mt-3 text-xs text-[var(--text-muted)]">
+                                    This setting writes to the Windows Registry at{' '}
+                                    <code className="text-[var(--accent)] bg-[var(--surface)] px-1.5 py-0.5 rounded text-[10px]">
+                                        HKCU\Software\Microsoft\Windows\CurrentVersion\Run
+                                    </code>
+                                    {' '}— the same mechanism used by apps like Discord and Spotify.
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </section>
+                )}
 
             </Container>
 

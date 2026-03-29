@@ -3,7 +3,7 @@
 // WebSocket client + tab command dispatcher for Zen Browser
 // ============================================================
 
-const DEFAULT_WS_URL = "ws://localhost:3001/browser/ws";
+const DEFAULT_WS_URL = "ws://localhost:4243/browser/ws";
 
 /**
  * Ensure the URL always uses ws:// not wss://.
@@ -28,11 +28,25 @@ let reconnectDelay = RECONNECT_BASE_DELAY_MS;
 let isConnected = false;
 let wsUrl = DEFAULT_WS_URL;
 
-// ── Load persisted WS URL ────────────────────────────────────
+// ── Load persisted WS URL (with auto-migration for old ports) ─
 async function loadWsUrl() {
   try {
     const result = await browser.storage.local.get("wsUrl");
-    if (result.wsUrl) wsUrl = forceWsProtocol(result.wsUrl);
+    if (result.wsUrl) {
+      let url = forceWsProtocol(result.wsUrl);
+
+      // Auto-migrate: old default port 3001 → 4243
+      if (
+        url === "ws://localhost:3001/browser/ws" ||
+        url === "ws://127.0.0.1:3001/browser/ws"
+      ) {
+        url = DEFAULT_WS_URL;
+        await browser.storage.local.set({ wsUrl: url });
+        console.log("[Aurelius] Auto-migrated wsUrl from :3001 → :4243");
+      }
+
+      wsUrl = url;
+    }
   } catch {
     // fall back to default
   }

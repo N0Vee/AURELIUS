@@ -141,4 +141,139 @@ export const settingsRoute = new Elysia({ prefix: '/api/settings' })
                 message: `Cannot reach OpenRouter: ${err instanceof Error ? err.message : String(err)}`,
             };
         }
+    })
+
+    // ----------------------------------------------------------
+    // GET /api/settings/openrouter-models
+    // Proxies the OpenRouter /models list using the stored API key
+    // ----------------------------------------------------------
+    .get('/openrouter-models', async () => {
+        const s = getSettings();
+
+        if (!s.openrouterApiKey) {
+            console.log('[OpenRouter Models] No API key configured — returning no_key');
+            return { data: [], error: 'no_key' as const };
+        }
+
+        const url = `${s.openrouterBaseUrl}/models`;
+        console.log(`[OpenRouter Models] Fetching from ${url}`);
+
+        try {
+            const res = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${s.openrouterApiKey}`,
+                    'HTTP-Referer': s.openrouterSiteUrl,
+                    'X-Title': s.openrouterSiteName,
+                },
+                signal: AbortSignal.timeout(10_000),
+            });
+
+            if (!res.ok) {
+                const text = await res.text().catch(() => '');
+                console.error(`[OpenRouter Models] API error ${res.status}: ${text.slice(0, 200)}`);
+                return {
+                    data: [],
+                    error: `HTTP ${res.status}: ${text.slice(0, 200)}`,
+                };
+            }
+
+            const json = await res.json() as {
+                data?: Array<{
+                    id: string;
+                    name: string;
+                    created?: number;
+                    description?: string;
+                    context_length?: number;
+                    architecture?: {
+                        modality?: string;
+                        input_modalities?: string[];
+                        output_modalities?: string[];
+                        tokenizer?: string;
+                        instruct_type?: string;
+                    };
+                    pricing?: {
+                        prompt: string;
+                        completion: string;
+                        request?: string;
+                        image?: string;
+                    };
+                    top_provider?: {
+                        is_moderated?: boolean;
+                        context_length?: number;
+                        max_completion_tokens?: number;
+                    };
+                    supported_parameters?: string[];
+                }>;
+            };
+
+            const models = json.data ?? [];
+            console.log(`[OpenRouter Models] Returned ${models.length} models`);
+            return { data: models, error: null };
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Failed to fetch models';
+            console.error(`[OpenRouter Models] Fetch error: ${msg}`);
+            return { data: [], error: msg };
+        }
+    })
+
+    // ----------------------------------------------------------
+    // GET /api/settings/openrouter-credits
+    // Proxies the OpenRouter /credits endpoint using the stored API key
+    // Returns total_credits purchased, total_usage consumed, and remaining
+    // ----------------------------------------------------------
+    .get('/openrouter-credits', async () => {
+        const s = getSettings();
+
+        if (!s.openrouterApiKey) {
+            console.log('[OpenRouter Credits] No API key configured — returning no_key');
+            return { data: null, error: 'no_key' as const };
+        }
+
+        const url = `${s.openrouterBaseUrl}/credits`;
+        console.log(`[OpenRouter Credits] Fetching from ${url}`);
+
+        try {
+            const res = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${s.openrouterApiKey}`,
+                    'HTTP-Referer': s.openrouterSiteUrl,
+                    'X-Title': s.openrouterSiteName,
+                },
+                signal: AbortSignal.timeout(8_000),
+            });
+
+            if (!res.ok) {
+                const text = await res.text().catch(() => '');
+                console.error(`[OpenRouter Credits] API error ${res.status}: ${text.slice(0, 200)}`);
+                return {
+                    data: null,
+                    error: `HTTP ${res.status}: ${text.slice(0, 200)}`,
+                };
+            }
+
+            const json = await res.json() as {
+                data: {
+                    total_credits: number;
+                    total_usage: number;
+                };
+            };
+
+            const { total_credits, total_usage } = json.data;
+            const remaining = total_credits - total_usage;
+
+            console.log(`[OpenRouter Credits] total=$${total_credits.toFixed(4)} used=$${total_usage.toFixed(4)} remaining=$${remaining.toFixed(4)}`);
+
+            return {
+                data: {
+                    total_credits,
+                    total_usage,
+                    remaining,
+                },
+                error: null,
+            };
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Failed to fetch credits';
+            console.error(`[OpenRouter Credits] Fetch error: ${msg}`);
+            return { data: null, error: msg };
+        }
     });

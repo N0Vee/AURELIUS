@@ -28,10 +28,16 @@ interface OpenRouterDelta {
 
 interface OpenRouterChunk {
     id: string;
+    model?: string;
     choices: Array<{
         delta: OpenRouterDelta;
         finish_reason: string | null;
     }>;
+    usage?: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        total_tokens: number;
+    };
 }
 
 // ============================================================
@@ -150,9 +156,19 @@ You MUST always use the most specific tool available. NEVER use run_command when
 - To kill a process → use kill_process
 - run_command is ONLY for shell commands that have NO dedicated tool (e.g. pip install, system diagnostics, custom scripts).
 
+=== TOOL RESULT EVALUATION (MANDATORY) ===
+- After EVERY tool call, carefully read the result. Tool results prefixed with [FAILED] or containing "Error:" mean the tool DID NOT succeed.
+- If a tool FAILED, report the failure honestly to the user. NEVER claim something was successful when the tool result shows an error.
+- If a tool SUCCEEDED (result prefixed with [SUCCESS] or no error), you may proceed. Do NOT call another tool just to "verify" or "confirm" — trust the result.
+
 === RESPONSE RULES (MANDATORY) ===
 - After all tool calls are complete, you MUST ALWAYS finish with a text response summarizing what you did and the results. NEVER end silently with no text.
-- Once the user's task is fully accomplished, STOP calling tools. Do NOT make extra unnecessary tool calls (e.g. listing directories after writing a file, or searching after the answer is already known).
+- Once the user's task is fully accomplished, STOP calling tools. Do NOT make extra unnecessary tool calls.
+  - Do NOT call list_directory after write_file — the write result already confirms success or failure.
+  - Do NOT call find_files or list_directory after the answer is already known.
+  - Do NOT call read_file on a file you just wrote — the write result confirms the content.
+  - Do NOT repeat a tool call that already returned a clear answer.
+- If the very first tool call gives you everything you need, respond with text immediately. Do NOT chain more tools.
 - Keep your final summary concise and relevant to what the user asked.
 `;
 }
@@ -168,6 +184,7 @@ export async function* streamChatCompletion(
     trace?: import('./types').TraceContext,
 ): AsyncGenerator<LLMStreamEvent, void, unknown> {
     const settings = getSettings();
+    let currentModel = settings.openrouterModel;
 
     if (!settings.openrouterApiKey) {
         throw new Error(
@@ -339,6 +356,20 @@ export async function* streamChatCompletion(
                         if (tcDelta.function?.name) acc.name += tcDelta.function.name;
                         if (tcDelta.function?.arguments) acc.arguments += tcDelta.function.arguments;
                     }
+                }
+
+                // Track model name reported by the server
+                if (chunk.model) currentModel = chunk.model;
+
+                // Usage info is in the last chunk before [DONE]
+                if (chunk.usage) {
+                    yield {
+                        type: 'usage',
+                        promptTokens:     chunk.usage.prompt_tokens,
+                        completionTokens: chunk.usage.completion_tokens,
+                        totalTokens:      chunk.usage.total_tokens,
+                        model:            currentModel,
+                    };
                 }
 
                 // ── finish_reason: tool_calls — flush accumulated calls

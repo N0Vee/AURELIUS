@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const envSchema = z.object({
-    PORT: z.coerce.number().default(3001),
+    PORT: z.coerce.number().default(4243),
     HOST: z.string().default('0.0.0.0'),
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
@@ -16,7 +16,7 @@ const envSchema = z.object({
     OPENROUTER_API_KEY: z.string().optional(),
     OPENROUTER_MODEL: z.string().default('meta-llama/llama-3.1-8b-instruct:free'),
     OPENROUTER_BASE_URL: z.string().default('https://openrouter.ai/api/v1'),
-    OPENROUTER_SITE_URL: z.string().default('http://localhost:3000'),
+    OPENROUTER_SITE_URL: z.string().default('http://localhost:4242'),
     OPENROUTER_SITE_NAME: z.string().default('Aurelius'),
 
     // Audio Engine (Phase 2)
@@ -26,7 +26,7 @@ const envSchema = z.object({
     TAVILY_API_KEY: z.string().optional(),
 
     // CORS
-    CORS_ORIGIN: z.string().default('http://localhost:3000'),
+    CORS_ORIGIN: z.string().default('http://localhost:4242'),
 });
 
 export type Env = z.infer<typeof envSchema>;

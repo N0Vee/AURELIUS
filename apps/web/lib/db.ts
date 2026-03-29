@@ -26,6 +26,23 @@ export interface PersistedMessage {
     data: string;
 }
 
+/**
+ * Accumulated token usage for a chat session.
+ * Updated (upserted) after every LLM response that carries usage data.
+ */
+export interface SessionUsage {
+    /** Same as the session id — primary key, one row per session */
+    sessionId: string;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    /** Last model used in this session */
+    model: string;
+    /** Number of LLM completions accumulated */
+    turnCount: number;
+    updatedAt: number;
+}
+
 // ============================================================
 // Database
 // ============================================================
@@ -33,6 +50,7 @@ export interface PersistedMessage {
 class AureliusDB extends Dexie {
     sessions!: EntityTable<ChatSession, 'id'>;
     messages!: EntityTable<PersistedMessage, 'id'>;
+    sessionUsage!: EntityTable<SessionUsage, 'sessionId'>;
 
     constructor() {
         super('AureliusDB');
@@ -44,6 +62,10 @@ class AureliusDB extends Dexie {
             // messages: primary key = id, indexed on sessionId for per-session queries,
             // compound index [sessionId+timestamp] for ordered per-session fetches
             messages: 'id, sessionId, timestamp, [sessionId+timestamp]',
+        });
+
+        this.version(2).stores({
+            sessionUsage: 'sessionId, updatedAt',
         });
     }
 }

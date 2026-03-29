@@ -4,7 +4,9 @@
 // backend WebSocket URL.
 // ============================================================
 
-const DEFAULT_WS_URL = "ws://localhost:3001/browser/ws";
+const DEFAULT_WS_URL = "ws://localhost:4243/browser/ws";
+
+const errorHint = document.getElementById("errorHint");
 
 const statusDot = document.getElementById("statusDot");
 const statusLabel = document.getElementById("statusLabel");
@@ -33,14 +35,22 @@ function showToast(msg, isError = false) {
 function renderStatus(isConnected, wsUrl) {
   const state = isConnected ? "connected" : "disconnected";
   const label = isConnected ? "Connected" : "Disconnected";
-  const sub = isConnected
-    ? wsUrl || DEFAULT_WS_URL
-    : "Not connected to Aurelius backend";
+  const url = wsUrl || DEFAULT_WS_URL;
+  const sub = isConnected ? url : `Cannot reach ${url}`;
 
   statusDot.className = `status-dot ${state}`;
   statusLabel.className = `status-label ${state}`;
   statusLabel.textContent = label;
   statusSub.textContent = sub;
+
+  // Show / hide the "backend not running" hint
+  if (errorHint) {
+    if (isConnected) {
+      errorHint.classList.remove("visible");
+    } else {
+      errorHint.classList.add("visible");
+    }
+  }
 }
 
 // ── Load state from background script ────────────────────────
@@ -96,7 +106,7 @@ resetUrlBtn.addEventListener("click", async () => {
       url: DEFAULT_WS_URL,
     });
     if (res.ok) {
-      showToast("Reset to default URL.");
+      showToast("Reset to default — reconnecting…");
       setTimeout(loadStatus, 1200);
     } else {
       showToast(res.error || "Reset failed.", true);
@@ -109,6 +119,13 @@ resetUrlBtn.addEventListener("click", async () => {
 // ── Manual reconnect ─────────────────────────────────────────
 
 reconnectBtn.addEventListener("click", async () => {
+  // Optimistically show connecting state while we wait
+  statusDot.className = "status-dot connecting";
+  statusLabel.className = "status-label connecting";
+  statusLabel.textContent = "Connecting…";
+  statusSub.textContent = "Trying to reach Aurelius backend…";
+  if (errorHint) errorHint.classList.remove("visible");
+
   try {
     await browser.runtime.sendMessage({ type: "reconnect" });
     showToast("Reconnecting…");
@@ -127,5 +144,5 @@ wsUrlInput.addEventListener("keydown", (e) => {
 // ── Poll status every 2s while popup is open ─────────────────
 
 loadStatus();
-const pollTimer = setInterval(loadStatus, 2000);
+const pollTimer = setInterval(loadStatus, 2_000);
 window.addEventListener("unload", () => clearInterval(pollTimer));

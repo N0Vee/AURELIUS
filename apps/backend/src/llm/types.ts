@@ -21,6 +21,7 @@ export interface TraceContext {
 export type LLMStreamEvent =
     | { type: 'text';      content: string }
     | { type: 'tool_call'; id: string; name: string; arguments: string }
+    | { type: 'usage'; promptTokens: number; completionTokens: number; totalTokens: number; model: string }
     | { type: 'done' };
 
 // ============================================================

@@ -25,8 +25,8 @@ interface UseBackendResult {
 }
 
 const DEFAULT_HEALTH_URLS = [
-    'http://127.0.0.1:3001/health',
-    'http://localhost:3001/health',
+    'http://127.0.0.1:4243/health',
+    'http://localhost:4243/health',
 ];
 
 export function useDesktopBackend(

@@ -45,8 +45,8 @@ export type Message = ChatMessage | ToolConfirmMessage | ToolAutoMessage;
 // ============================================================
 
 const API_BASES = [
-    'http://127.0.0.1:3001',
-    'http://localhost:3001',
+    'http://127.0.0.1:4243',
+    'http://localhost:4243',
 ];
 
 const CHAT_STREAM_PATH = '/chat/stream';
@@ -367,6 +367,26 @@ export function useChat(options: UseChatOptions = {}) {
                                         : m,
                                 ),
                             );
+                        }
+
+                        // ── Usage stats from OpenRouter ──────────────────────────
+                        else if (event === 'usage') {
+                            if (sessionId) {
+                                const { promptTokens = 0, completionTokens = 0, totalTokens = 0, model = '' } =
+                                    data as { promptTokens?: number; completionTokens?: number; totalTokens?: number; model?: string };
+
+                                void db.sessionUsage.get(sessionId).then((existing) =>
+                                    db.sessionUsage.put({
+                                        sessionId,
+                                        promptTokens:     (existing?.promptTokens     ?? 0) + promptTokens,
+                                        completionTokens: (existing?.completionTokens ?? 0) + completionTokens,
+                                        totalTokens:      (existing?.totalTokens      ?? 0) + totalTokens,
+                                        model:            model || existing?.model || '',
+                                        turnCount:        (existing?.turnCount ?? 0) + 1,
+                                        updatedAt:        Date.now(),
+                                    }),
+                                );
+                            }
                         }
 
                         // ── Stream complete ───────────────────────────────

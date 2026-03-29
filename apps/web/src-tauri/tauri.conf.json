@@ -5,14 +5,14 @@
   "identifier": "com.aurelius.app",
   "build": {
     "frontendDist": "../out",
-    "devUrl": "http://localhost:3000",
+    "devUrl": "http://localhost:4242",
     "beforeDevCommand": "bun run dev",
     "beforeBuildCommand": "bun run build"
   },
   "app": {
     "windows": [],
     "security": {
-      "csp": "default-src 'self' http://localhost:3000; connect-src 'self' ipc: http://ipc.localhost http://localhost:3000 http://localhost:3001 http://127.0.0.1:3001 https://openrouter.ai ws://localhost:3001 ws://127.0.0.1:3001; img-src 'self' asset: http://asset.localhost http://localhost:3000 blob: data:; style-src 'unsafe-inline' 'self' http://localhost:3000; font-src 'self' http://localhost:3000 data:; script-src 'self' http://localhost:3000 'wasm-unsafe-eval'"
+      "csp": "default-src 'self' http://localhost:4242; connect-src 'self' ipc: http://ipc.localhost http://localhost:4242 http://localhost:4243 http://127.0.0.1:4243 https://openrouter.ai ws://localhost:4243 ws://127.0.0.1:4243; img-src 'self' asset: http://asset.localhost http://localhost:4242 blob: data:; style-src 'unsafe-inline' 'self' http://localhost:4242; font-src 'self' http://localhost:4242 data:; script-src 'self' http://localhost:4242 'wasm-unsafe-eval'"
     }
   },
   "bundle": {
@@ -31,7 +31,8 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "installerHooks": "nsis/installer-hooks.nsh"
       },
       "webviewInstallMode": {
         "type": "embedBootstrapper",

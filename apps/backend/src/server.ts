@@ -3,6 +3,8 @@ import process from 'process';
 import { cors } from '@elysiajs/cors';
 import { env } from './config/env';
 import { initSettings } from './config/settings.store';
+import { initMemoryStore } from './memory/memory.store';
+import { memoryRoute } from './routes/memory.route';
 import { chatStreamRoute } from './sse/chat.stream';
 import { settingsRoute } from './routes/settings.route';
 import { toolsRoute } from './routes/tools.route';
@@ -22,6 +24,9 @@ await initAutomations();
 
 // Seed built-in skills and load skill state
 await initSkills();
+
+// Load long-term memory store
+await initMemoryStore();
 
 const app = new Elysia()
     // CORS for Next.js frontend & Tauri desktop shell
@@ -74,6 +79,8 @@ const app = new Elysia()
     // Skills CRUD + generate
     .use(skillsRoute)
 
+    // Memory CRUD + search
+    .use(memoryRoute)
 
     // Chat routes
     .use(chatStreamRoute)
@@ -100,7 +107,7 @@ export type App = typeof app;
 // SIGTERM may never arrive — but we register both signals so the port is
 // always released cleanly when the signal IS delivered (dev mode, Linux, macOS)
 // and to make `bun run dev:backend` stoppable with Ctrl+C without leaving a
-// zombie process holding port 3001.
+// zombie process holding port 4243.
 
 function shutdown(signal: string) {
     console.log(`\n[Server] Received ${signal} — stopping server and releasing port ${env.PORT}…`);

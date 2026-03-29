@@ -11,6 +11,7 @@ import {
     Settings,
     Workflow,
     Sparkles,
+    Brain,
 } from 'lucide-react';
 
 interface NavItem {
@@ -29,6 +30,7 @@ const accountItems: NavItem[] = [
     { href: '/settings', label: 'Settings', icon: <Settings size={20} /> },
     { href: '/settings/automations', label: 'Automations', icon: <Workflow size={20} /> },
     { href: '/settings/skills', label: 'Skills', icon: <Sparkles size={20} /> },
+    { href: '/settings/memory', label: 'Memory', icon: <Brain size={20} /> },
 ];
 
 /**

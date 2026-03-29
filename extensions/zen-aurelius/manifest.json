@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Aurelius Browser Control",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Connects Zen Browser to the Aurelius AI assistant for intelligent browser automation.",
 
   "browser_specific_settings": {
@@ -11,7 +11,7 @@
     }
   },
 
-  "content_security_policy": "script-src 'self'; connect-src ws://localhost:* wss://localhost:*",
+  "content_security_policy": "script-src 'self'; connect-src ws://localhost:* wss://localhost:* ws://127.0.0.1:* wss://127.0.0.1:*",
 
   "permissions": ["tabs", "activeTab", "scripting", "storage", "<all_urls>"],
 
@@ -32,18 +32,20 @@
   "browser_action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
-      "32": "icons/icon-32.png",
-      "48": "icons/icon-48.png",
-      "96": "icons/icon-96.png",
-      "128": "icons/icon-128.png"
+      "16": "icons/icon.svg",
+      "32": "icons/icon.svg",
+      "48": "icons/icon.svg",
+      "96": "icons/icon.svg",
+      "128": "icons/icon.svg"
     },
     "default_title": "Aurelius Browser Control"
   },
 
   "icons": {
-    "32": "icons/icon-32.png",
-    "48": "icons/icon-48.png",
-    "96": "icons/icon-96.png",
-    "128": "icons/icon-128.png"
+    "16": "icons/icon.svg",
+    "32": "icons/icon.svg",
+    "48": "icons/icon.svg",
+    "96": "icons/icon.svg",
+    "128": "icons/icon.svg"
   }
 }

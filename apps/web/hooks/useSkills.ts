@@ -30,8 +30,8 @@ export interface ParsedSkill {
 // ============================================================
 
 const API_BASE_CANDIDATES = [
-    'http://127.0.0.1:3001',
-    'http://localhost:3001',
+    'http://127.0.0.1:4243',
+    'http://localhost:4243',
 ];
 
 async function probeApiBase(base: string): Promise<boolean> {

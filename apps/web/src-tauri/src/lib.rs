@@ -1,13 +1,15 @@
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
+use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
 /// Preferred port for the localhost plugin to serve the frontend assets.
 /// Falls back to a random free port if this one is taken.
 #[cfg(not(dev))]
-const FRONTEND_PORT: u16 = 3000;
+const FRONTEND_PORT: u16 = 4242;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -28,9 +30,9 @@ pub fn run() {
     // This fixes cross-origin, SSE streaming, and fetch() quirks in
     // production builds.
     //
-    // In dev mode, the Next.js dev server already occupies port 3000 and
+    // In dev mode, the Next.js dev server already occupies port 4242 and
     // Tauri uses `devUrl` to point the webview at it, so the localhost
-    // plugin must NOT be loaded — otherwise it steals port 3000 and causes
+    // plugin must NOT be loaded — otherwise it steals port 4242 and causes
     // HTTP 500 errors.
     #[cfg(not(dev))]
     {
@@ -85,6 +87,9 @@ pub fn run() {
                         .permission("core:webview:allow-set-webview-background-color")
                         .permission("global-shortcut:allow-register")
                         .permission("shell:allow-execute")
+                        .permission("autostart:allow-enable")
+                        .permission("autostart:allow-disable")
+                        .permission("autostart:allow-is-enabled")
                         .remote(localhost_url.to_string())
                         .window("main"),
                 )?;
@@ -146,11 +151,67 @@ pub fn run() {
                 }
             });
 
+            // ── Autostart plugin ─────────────────────────────────────────
+            // IMPORTANT: must be registered BEFORE the tray reads autolaunch()
+            #[cfg(desktop)]
+            {
+                app.handle().plugin(tauri_plugin_autostart::init(
+                    MacosLauncher::LaunchAgent,
+                    None,
+                ))?;
+
+                // Auto-enable on first install.
+                // We write a flag file so that if the user later disables autostart
+                // from Settings or the tray, we never forcibly re-enable it on the
+                // next launch — we only do this once.
+                let flag_path = app
+                    .path()
+                    .app_config_dir()
+                    .map(|d| d.join("autostart_configured.flag"));
+
+                if let Ok(ref flag) = flag_path {
+                    if !flag.exists() {
+                        let autostart = app.autolaunch();
+                        match autostart.enable() {
+                            Ok(_) => log::info!("[Autostart] Enabled on first launch"),
+                            Err(e) => {
+                                log::warn!("[Autostart] Failed to enable on first launch: {}", e)
+                            }
+                        }
+                        // Write the flag so we never auto-enable again
+                        if let Some(parent) = flag.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let _ = std::fs::write(flag, b"1");
+                    }
+                }
+            }
+
             // ── System tray ──────────────────────────────────────────────
+            // Read the live autostart state now that the plugin is registered.
+            let autostart_enabled = {
+                #[cfg(desktop)]
+                {
+                    app.autolaunch().is_enabled().unwrap_or(false)
+                }
+                #[cfg(not(desktop))]
+                {
+                    false
+                }
+            };
+            let autostart_label = if autostart_enabled {
+                "✓ Launch at Login"
+            } else {
+                "  Launch at Login"
+            };
+
             let show_item = MenuItemBuilder::with_id("show", "Open Aurelius").build(app)?;
+            let autostart_item =
+                MenuItemBuilder::with_id("autostart", autostart_label).build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+
             let menu = MenuBuilder::new(app)
-                .items(&[&show_item, &quit_item])
+                .items(&[&show_item, &autostart_item, &quit_item])
                 .build()?;
 
             TrayIconBuilder::new()
@@ -164,6 +225,20 @@ pub fn run() {
                             let _ = window.unminimize();
                             let _ = window.show();
                             let _ = window.set_focus();
+                        }
+                    }
+                    "autostart" => {
+                        #[cfg(desktop)]
+                        {
+                            let autostart = app.autolaunch();
+                            let currently = autostart.is_enabled().unwrap_or(false);
+                            if currently {
+                                let _ = autostart.disable();
+                                log::info!("[Autostart] Disabled via tray");
+                            } else {
+                                let _ = autostart.enable();
+                                log::info!("[Autostart] Enabled via tray");
+                            }
                         }
                     }
                     "quit" => {
@@ -228,7 +303,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if let tauri::RunEvent::Exit = event {
-                // Explicitly kill the backend sidecar so port 3001 is released.
+                // Explicitly kill the backend sidecar so port 4243 is released.
                 // On Windows, child processes are NOT killed automatically when
                 // the parent exits — they become orphans holding the port open,
                 // which prevents the next app launch from connecting.

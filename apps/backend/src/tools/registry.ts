@@ -961,3 +961,90 @@ register({
         },
     },
 });
+
+// ============================================================
+// Memory Tools
+// ============================================================
+
+// ── SAFE ────────────────────────────────────────────────────
+
+register({
+    name: 'remember_this',
+    displayName: 'Remember',
+    description: 'Save important information to long-term memory for future conversations. Use when the user says "remember this", "don\'t forget", or shares personal facts, preferences, or important notes.',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'remember_this',
+            description: 'Save important information to long-term memory. Use when the user explicitly asks you to remember something, or when they share a personal fact, preference, or ongoing task they want you to retain.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    content: {
+                        type: 'string',
+                        description: 'The fact, preference, or note to remember. Write it as a clear, self-contained statement (e.g. "User prefers TypeScript over JavaScript").',
+                    },
+                    type: {
+                        type: 'string',
+                        description: 'Category: "fact" for personal info, "preference" for likes/dislikes/habits, "task" for todos/goals, "note" for general notes.',
+                        enum: ['fact', 'preference', 'task', 'note'],
+                    },
+                },
+                required: ['content', 'type'],
+            },
+        },
+    },
+});
+
+register({
+    name: 'search_memories',
+    displayName: 'Search Memory',
+    description: 'Search through stored long-term memories to recall information about the user or past conversations. Use when the user asks what you remember, or when past context would help answer.',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'search_memories',
+            description: 'Search stored memories for relevant information about the user or past conversations. Returns the most relevant matches ranked by similarity.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: {
+                        type: 'string',
+                        description: 'Natural language description of what to search for in memory.',
+                    },
+                },
+                required: ['query'],
+            },
+        },
+    },
+});
+
+register({
+    name: 'forget_memory',
+    displayName: 'Forget',
+    description: 'Delete a specific memory by its ID. Use when the user says "forget that", "remove that from memory", or wants a specific memory deleted.',
+    permissionLevel: 'SAFE',
+    openAITool: {
+        type: 'function',
+        function: {
+            name: 'forget_memory',
+            description: 'Permanently delete a specific memory entry by its ID. First call search_memories to find the ID of the memory the user wants removed.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    id: {
+                        type: 'string',
+                        description: 'The UUID of the memory entry to delete.',
+                    },
+                    reason: {
+                        type: 'string',
+                        description: 'Brief reason for deletion (optional, for logging).',
+                    },
+                },
+                required: ['id'],
+            },
+        },
+    },
+});

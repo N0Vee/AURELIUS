@@ -107,6 +107,7 @@ export function useChatSessions(): UseChatSessionsReturn {
         async (id: string): Promise<void> => {
             // Remove all messages belonging to this session first
             await db.messages.where('sessionId').equals(id).delete();
+            await db.sessionUsage.where('sessionId').equals(id).delete();
             await db.sessions.delete(id);
 
             // If we just deleted the active session, switch to the next best one

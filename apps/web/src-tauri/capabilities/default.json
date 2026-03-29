@@ -16,6 +16,9 @@
     "core:window:allow-is-visible",
     "core:window:allow-toggle-maximize",
     "core:webview:allow-set-webview-background-color",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled",
     {
       "identifier": "shell:allow-execute",
       "allow": [

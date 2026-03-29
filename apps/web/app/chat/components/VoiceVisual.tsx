@@ -69,7 +69,7 @@ export function VoiceVisual({ onResponse, language, onLanguageChange }: VoiceVis
 
         try {
             // Call LLM API
-            const response = await fetch('http://localhost:3001/chat/stream', {
+            const response = await fetch('http://localhost:4243/chat/stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

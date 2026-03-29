@@ -31,7 +31,7 @@ interface UseSystemStatsOptions {
     refreshInterval?: number;
 }
 
-const DEFAULT_API_URL = 'http://localhost:3001/api/system/stats';
+const DEFAULT_API_URL = 'http://localhost:4243/api/system/stats';
 
 /**
  * Hook for fetching system stats with auto-refresh
