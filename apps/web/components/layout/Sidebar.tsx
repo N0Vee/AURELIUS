@@ -9,10 +9,8 @@ import {
     MessageSquare,
     LayoutDashboard,
     Settings,
-    ShieldCheck,
-    Cpu,
-    Globe,
     Workflow,
+    Sparkles,
 } from 'lucide-react';
 
 interface NavItem {
@@ -30,7 +28,29 @@ const navItems: NavItem[] = [
 const accountItems: NavItem[] = [
     { href: '/settings', label: 'Settings', icon: <Settings size={20} /> },
     { href: '/settings/automations', label: 'Automations', icon: <Workflow size={20} /> },
+    { href: '/settings/skills', label: 'Skills', icon: <Sparkles size={20} /> },
 ];
+
+/**
+ * Returns true when the current pathname matches a nav item's href.
+ *
+ * Rules:
+ * - "/" matches only the exact root path.
+ * - "/settings" matches "/settings" but NOT "/settings/automations" so that
+ *   the parent item doesn't stay highlighted when a child is active.
+ * - All other hrefs use an exact match augmented by a trailing-slash-insensitive
+ *   comparison, because `trailingSlash: true` in next.config.ts causes the
+ *   browser URL to carry a trailing slash while `usePathname()` may or may not
+ *   include it depending on the navigation method.
+ */
+function isNavActive(pathname: string, href: string): boolean {
+    // Normalise both sides: strip any trailing slash for comparison
+    const norm = (p: string) => p.replace(/\/$/, '') || '/';
+    const current = norm(pathname);
+    const target  = norm(href);
+
+    return current === target;
+}
 
 export function Sidebar() {
     const pathname = usePathname();
@@ -66,52 +86,44 @@ export function Sidebar() {
                     Main
                 </p>
 
-                {navItems.map((item) => {
-                    const isActive = pathname === item.href;
-
-                    return (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            className={cn(
-                                'flex items-center gap-3 rounded-[var(--radius-md)] px-4 py-3 text-sm font-medium transition-all',
-                                isActive
-                                    ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
-                                    : 'text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)]',
-                            )}
-                        >
-                            {item.icon}
-                            {item.label}
-                        </Link>
-                    );
-                })}
+                {navItems.map((item) => (
+                    <Link
+                        key={item.href}
+                        href={item.href}
+                        prefetch={false}
+                        className={cn(
+                            'flex items-center gap-3 rounded-[var(--radius-md)] px-4 py-3 text-sm font-medium transition-all',
+                            isNavActive(pathname, item.href)
+                                ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
+                                : 'text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)]',
+                        )}
+                    >
+                        {item.icon}
+                        {item.label}
+                    </Link>
+                ))}
 
                 <p className="mt-6 px-4 py-2 text-xs font-medium uppercase text-[var(--text-muted)]">
                     Account
                 </p>
 
-                {accountItems.map((item) => {
-                    const isActive = pathname === item.href;
-
-                    return (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            className={cn(
-                                'flex items-center gap-3 rounded-[var(--radius-md)] px-4 py-3 text-sm font-medium transition-all',
-                                isActive
-                                    ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
-                                    : 'text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)]',
-                            )}
-                        >
-                            {item.icon}
-                            {item.label}
-                        </Link>
-                    );
-                })}
+                {accountItems.map((item) => (
+                    <Link
+                        key={item.href}
+                        href={item.href}
+                        prefetch={false}
+                        className={cn(
+                            'flex items-center gap-3 rounded-[var(--radius-md)] px-4 py-3 text-sm font-medium transition-all',
+                            isNavActive(pathname, item.href)
+                                ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
+                                : 'text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)]',
+                        )}
+                    >
+                        {item.icon}
+                        {item.label}
+                    </Link>
+                ))}
             </nav>
-
-
         </aside>
     );
 }

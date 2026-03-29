@@ -9,6 +9,8 @@ import { toolsRoute } from './routes/tools.route';
 import { automationsRoute } from './routes/automations.route';
 import { initAutomations } from './tools/automations';
 import { browserBridgeRoute, isBrowserConnected } from './browser/bridge';
+import { skillsRoute } from './routes/skills.route';
+import { initSkills } from './skills/skills.store';
 import { getSystemStats } from './debug/hardware';
 import { getActiveProviderLabel } from './llm/provider';
 
@@ -17,6 +19,9 @@ await initSettings();
 
 // Load custom automations and register them as tools
 await initAutomations();
+
+// Seed built-in skills and load skill state
+await initSkills();
 
 const app = new Elysia()
     // CORS for Next.js frontend & Tauri desktop shell
@@ -65,6 +70,10 @@ const app = new Elysia()
 
     // Custom automations CRUD + test
     .use(automationsRoute)
+
+    // Skills CRUD + generate
+    .use(skillsRoute)
+
 
     // Chat routes
     .use(chatStreamRoute)

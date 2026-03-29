@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { db } from '@/lib/db';
 
 // ============================================================
 // Types
@@ -88,10 +89,17 @@ function formatError(raw: string): string {
 
 interface UseChatOptions {
     apiUrl?: string;
+    /**
+     * When provided, useChat will:
+     * - Load persisted messages from IndexedDB for this session on mount
+     * - Auto-save finalized messages to IndexedDB whenever they change
+     * - Clear the session's DB messages when clearMessages() is called
+     */
+    sessionId?: string | null;
 }
 
 export function useChat(options: UseChatOptions = {}) {
-    const { apiUrl } = options;
+    const { apiUrl, sessionId } = options;
 
     const [messages, setMessages]   = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -102,6 +110,83 @@ export function useChat(options: UseChatOptions = {}) {
     const lastHistoryRef       = useRef<Array<{ role: string; content: string }>>([]);
     const lastAssistantIdRef   = useRef<string>('');
     const activeApiBaseRef     = useRef<string>(API_BASES[0]);
+
+    // ----------------------------------------------------------
+    // Load messages from IndexedDB when sessionId changes
+    // ----------------------------------------------------------
+    useEffect(() => {
+        if (!sessionId) return;
+
+        // Clear in-memory state immediately so the old session's messages
+        // don't flash while the DB query is in-flight
+        setMessages([]);
+
+        db.messages
+            .where('sessionId')
+            .equals(sessionId)
+            .sortBy('timestamp')
+            .then((stored) => {
+                const loaded = stored.map((row) => JSON.parse(row.data) as Message);
+                setMessages(loaded);
+            })
+            .catch((err) => {
+                console.error('[useChat] Failed to load messages from DB:', err);
+            });
+    }, [sessionId]);
+
+    // ----------------------------------------------------------
+    // Auto-save finalized messages to IndexedDB (debounced 400 ms)
+    // ----------------------------------------------------------
+    useEffect(() => {
+        if (!sessionId) return;
+        if (messages.length === 0) return;
+
+        // Only persist messages that are no longer streaming
+        const toSave = messages.filter(
+            (m) => !('isStreaming' in m) || !(m as ChatMessage).isStreaming,
+        );
+        if (toSave.length === 0) return;
+
+        const timer = setTimeout(async () => {
+            try {
+                await db.messages.bulkPut(
+                    toSave.map((m) => ({
+                        id: m.id,
+                        sessionId: sessionId,
+                        timestamp: m.timestamp,
+                        // Strip isStreaming before storing — it's always false at rest
+                        data: JSON.stringify(
+                            'isStreaming' in m
+                                ? { ...(m as ChatMessage), isStreaming: undefined }
+                                : m,
+                        ),
+                    })),
+                );
+
+                // Bump the session's updatedAt so the sidebar re-sorts correctly
+                await db.sessions.update(sessionId, { updatedAt: Date.now() });
+
+                // Auto-title: if the session is still called 'New Chat', derive a
+                // title from the first user message (up to 60 chars)
+                const firstUser = toSave.find(
+                    (m): m is ChatMessage => m.role === 'user',
+                );
+                if (firstUser) {
+                    const session = await db.sessions.get(sessionId);
+                    if (session?.title === 'New Chat') {
+                        const derived = firstUser.content.slice(0, 60).trim();
+                        if (derived) {
+                            await db.sessions.update(sessionId, { title: derived });
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('[useChat] Failed to persist messages to DB:', err);
+            }
+        }, 400);
+
+        return () => clearTimeout(timer);
+}, [messages, sessionId]);
 
     // ----------------------------------------------------------
     // Core stream runner
@@ -493,14 +578,29 @@ export function useChat(options: UseChatOptions = {}) {
     }, []);
 
     // ----------------------------------------------------------
-    // Clear all messages
+    // Clear all messages (in-memory + DB for current session)
     // ----------------------------------------------------------
     const clearMessages = useCallback(() => {
+        // Abort any active stream so isLoading resets immediately
+        // and the orphaned stream doesn't keep trying to update cleared messages
+        if (streamActiveRef.current) {
+            abortControllerRef.current?.abort();
+        }
+        streamActiveRef.current = false;
+        setIsLoading(false);
+
+        if (sessionId) {
+            void db.messages.where('sessionId').equals(sessionId).delete();
+            void db.sessions.update(sessionId, {
+                title: 'New Chat',
+                updatedAt: Date.now(),
+            });
+        }
         setMessages([]);
         setError(null);
         lastHistoryRef.current     = [];
         lastAssistantIdRef.current = '';
-    }, []);
+    }, [sessionId]);
 
     return {
         messages,

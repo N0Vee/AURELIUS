@@ -2,9 +2,11 @@
 
 import { useState, FormEvent, useRef, useEffect, useCallback } from 'react';
 import { useChat } from '@/hooks/useChat';
+import { useChatSessions } from '@/hooks/useChatSessions';
 import { useScreenCapture } from '@/hooks/useScreenCapture';
 import { useTauriDrag } from '@/hooks/useTauriDrag';
 import { ChatWindow } from './components/ChatWindow';
+import { SessionSidebar } from './components/SessionSidebar';
 
 import { VoiceVisual } from './components/VoiceVisual';
 import { Button } from '@/components/ui';
@@ -148,6 +150,17 @@ export default function ChatPage() {
     const [mode, setMode] = useState<Mode>('chat');
     const [input, setInput] = useState('');
     const [language, setLanguage] = useState<'th' | 'en'>('th');
+
+    // ── Session management ─────────────────────────────────────────────────
+    const {
+        sessions,
+        activeSessionId,
+        setActiveSessionId,
+        createSession,
+        deleteSession,
+        renameSession,
+    } = useChatSessions();
+
     const {
         messages,
         isLoading,
@@ -157,7 +170,7 @@ export default function ChatPage() {
         clearMessages,
         approveToolCall,
         rejectToolCall,
-    } = useChat();
+    } = useChat({ sessionId: activeSessionId });
     const { pendingImage, captureScreen, pasteFromClipboard, clearPendingImage } = useScreenCapture();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -209,10 +222,26 @@ export default function ChatPage() {
     return (
         <div
             className={cn(
-                'flex flex-col h-screen',
+                'flex h-screen',
                 isDesktop && 'rounded-2xl overflow-hidden border border-[var(--overlay-border)] shadow-2xl bg-[var(--overlay-bg)]',
             )}
         >
+            {/* ── Session sidebar (web only) ──────────────────────────────── */}
+            {!isDesktop && (
+                <SessionSidebar
+                    sessions={sessions}
+                    activeSessionId={activeSessionId}
+                    onSelect={setActiveSessionId}
+                    onCreate={createSession}
+                    onDelete={deleteSession}
+                    onRename={renameSession}
+                    className="hidden sm:flex"
+                />
+            )}
+
+            {/* ── Chat column ────────────────────────────────────────────── */}
+            <div className="flex flex-col flex-1 min-w-0 h-screen">
+
             {/* ── Title bar ──────────────────────────────────────────────── */}
             {isDesktop ? (
                 <OverlayTitleBar
@@ -271,7 +300,7 @@ export default function ChatPage() {
                             'fixed right-0 px-3 pointer-events-none',
                             isDesktop
                                 ? 'bottom-14 left-0'
-                                : 'bottom-20 sm:bottom-24 left-0 sm:left-64 sm:px-6',
+                                : 'bottom-20 sm:bottom-24 left-0 sm:left-[29rem] sm:px-6',
                         )}
                     >
 
@@ -293,10 +322,13 @@ export default function ChatPage() {
                                 {/* ── Image preview ────────────────────────── */}
                                 {pendingImage && (
                                     <div className="relative mb-2 inline-block">
-                                        <img
+                                        <Image
                                             src={pendingImage}
                                             alt="Captured screenshot"
-                                            className="max-h-32 rounded-lg border border-[var(--border)] object-contain"
+                                            width={400}
+                                            height={128}
+                                            unoptimized
+                                            className="max-h-32 w-auto rounded-lg border border-[var(--border)] object-contain"
                                         />
                                         <button
                                             type="button"
@@ -395,7 +427,7 @@ export default function ChatPage() {
 
             {/* ── Mode toggle (web only — overlay uses title bar toggle) ──── */}
             {!isDesktop && (
-                <div className="fixed bottom-3 sm:bottom-6 left-0 sm:left-64 right-0 px-3 sm:px-6 pointer-events-none">
+                <div className="fixed bottom-3 sm:bottom-6 left-0 sm:left-[29rem] right-0 px-3 sm:px-6 pointer-events-none">
                     <div className="flex justify-center pointer-events-auto">
                         <div className="flex items-center bg-[var(--surface)] border border-[var(--border)] rounded-full p-1 shadow-xl">
                             <button
@@ -424,6 +456,7 @@ export default function ChatPage() {
                     </div>
                 </div>
             )}
+            </div>{/* end chat column */}
         </div>
     );
 }

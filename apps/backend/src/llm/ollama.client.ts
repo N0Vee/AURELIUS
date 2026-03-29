@@ -119,6 +119,7 @@ You MUST always use the most specific tool available. NEVER use run_command when
 export async function* streamChatCompletion(
     messages: ChatMessage[],
     tools?: OpenAITool[],
+    systemPromptOverride?: string,
 ): AsyncGenerator<LLMStreamEvent, void, unknown> {
     const settings = getSettings();
 
@@ -139,7 +140,7 @@ export async function* streamChatCompletion(
     }
 
     const ollamaMessages: OllamaMessage[] = [
-        { role: 'system', content: settings.systemPrompt },
+        { role: 'system', content: systemPromptOverride ?? settings.systemPrompt },
         { role: 'system', content: getHiddenRuntimeSystemContext() },
         ...steeredMessages,
     ];
@@ -244,9 +245,10 @@ export async function* streamChatCompletion(
 export async function chatCompletion(
     messages: ChatMessage[],
     tools?: OpenAITool[],
+    systemPromptOverride?: string,
 ): Promise<string> {
     let full = '';
-    for await (const event of streamChatCompletion(messages, tools)) {
+    for await (const event of streamChatCompletion(messages, tools, systemPromptOverride)) {
         if (event.type === 'text') full += event.content;
     }
     return full;

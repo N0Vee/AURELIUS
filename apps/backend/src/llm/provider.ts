@@ -36,19 +36,20 @@ export function getActiveProviderLabel(): string {
 export async function* streamChatCompletion(
     messages: ChatMessage[],
     tools?: OpenAITool[],
+    systemPromptOverride?: string,
 ): AsyncGenerator<LLMStreamEvent, void, unknown> {
     const { llmProvider } = getSettings();
 
     switch (llmProvider) {
         case 'openrouter':
             console.log('[Provider] Routing to → OpenRouter');
-            yield* openRouterStream(messages, tools);
+            yield* openRouterStream(messages, tools, systemPromptOverride);
             break;
 
         case 'ollama':
         default:
             console.log('[Provider] Routing to → Ollama');
-            yield* ollamaStream(messages, tools);
+            yield* ollamaStream(messages, tools, systemPromptOverride);
             break;
     }
 }
@@ -59,15 +60,16 @@ export async function* streamChatCompletion(
 export async function chatCompletion(
     messages: ChatMessage[],
     tools?: OpenAITool[],
+    systemPromptOverride?: string,
 ): Promise<string> {
     const { llmProvider } = getSettings();
 
     switch (llmProvider) {
         case 'openrouter':
-            return openRouterChat(messages, tools);
+            return openRouterChat(messages, tools, systemPromptOverride);
 
         case 'ollama':
         default:
-            return ollamaChat(messages, tools);
+            return ollamaChat(messages, tools, systemPromptOverride);
     }
 }

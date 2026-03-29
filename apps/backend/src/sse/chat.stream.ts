@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { streamChatCompletion } from '../llm/provider';
+import { getActiveSkill } from '../skills/skills.store';
 import { getOpenAITools, getTool, canAutoExecute } from '../tools/registry';
 import { executeTool } from '../tools/executor';
 import { getAutomationByName, streamAutomationSteps } from '../tools/automations';
@@ -68,6 +69,21 @@ async function* agentLoop(
 ): AsyncGenerator<string, void, unknown> {
     // Work on a mutable copy so we can append tool results
     const messages: ChatMessage[] = [...initialMessages];
+
+    // ── Active skill injection ────────────────────────────────────────────────
+    // If the user has an active skill, prepend its instructions as a system
+    // message so the LLM follows the skill's behavioral overlay on top of the
+    // base Aurelius personality.
+    const activeSkill = await getActiveSkill();
+    if (activeSkill) {
+        messages.unshift({
+            id: crypto.randomUUID(),
+            role: 'system',
+            content: `[ACTIVE SKILL: ${activeSkill.displayName} ${activeSkill.icon}]\n\n${activeSkill.body}`,
+            timestamp: Date.now(),
+        });
+        console.log(`[AgentLoop] Skill active: ${activeSkill.name} (${activeSkill.displayName})`);
+    }
 
     // Only include browser tools if the extension is currently connected.
     // Without this guard, 16 extra tool schemas are sent to the LLM on every
