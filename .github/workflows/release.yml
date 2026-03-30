@@ -114,5 +114,6 @@ jobs:
             - **Existing users:** The app will prompt you to update automatically.
           files: |
             apps/web/src-tauri/target/release/bundle/nsis/Aurelius_*_x64-setup.exe
-            apps/web/src-tauri/target/release/bundle/nsis/Aurelius_*_x64-setup.exe.sig
+            apps/web/src-tauri/target/release/bundle/nsis/*.sig
             apps/web/src-tauri/target/release/bundle/nsis/latest.json
+            apps/web/src-tauri/target/release/bundle/*.json
