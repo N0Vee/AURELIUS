@@ -91,6 +91,34 @@ jobs:
           projectPath: apps/web
           tauriScript: bun run tauri
 
+      # ── Find and copy latest.json ──
+      - name: Find latest.json
+        run: |
+          Get-ChildItem -Path apps/web/src-tauri/target/release/bundle -Recurse -Filter "latest.json" | ForEach-Object {
+            Write-Host "Found latest.json at: $($_.FullName)"
+            Copy-Item $_.FullName apps/web/src-tauri/target/release/bundle/nsis/latest.json -Force
+          }
+          if (!(Test-Path apps/web/src-tauri/target/release/bundle/nsis/latest.json)) {
+            Write-Host "latest.json not found, generating manually..."
+            $version = "${{ env.VERSION }}"
+            $url = "https://github.com/${{ github.repository }}/releases/download/v$version"
+            $exeName = "Aurelius_${version}_x64-setup.exe"
+            $sig = Get-Content apps/web/src-tauri/target/release/bundle/nsis/Aurelius_*_x64-setup.exe.sig -Raw
+            $json = @{
+              version = $version
+              notes = "Aurelius v$version"
+              pub_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+              platforms = @{
+                "windows-x86_64" = @{
+                  signature = $sig.Trim()
+                  url = "$url/$exeName"
+                }
+              }
+            } | ConvertTo-Json -Depth 10
+            $json | Out-File apps/web/src-tauri/target/release/bundle/nsis/latest.json
+          }
+          Get-Content apps/web/src-tauri/target/release/bundle/nsis/latest.json
+
       # ── Create GitHub Release ──
       - name: Create Release
         id: create_release
