@@ -79,6 +79,13 @@ export function useUpdater(): UseUpdaterReturn {
     // Prevent overlapping check calls.
     const checkingRef = useRef(false);
 
+    // Track consecutive errors to implement backoff
+    const errorCountRef = useRef(0);
+    
+    // Track last check time to prevent rapid re-checks
+    const lastCheckTimeRef = useRef(0);
+    const MIN_CHECK_INTERVAL_MS = 60_000; // Minimum 1 minute between checks
+
     // ── Detect Tauri ──────────────────────────────────────────────────────
     useEffect(() => {
         let cancelled = false;
@@ -100,7 +107,16 @@ export function useUpdater(): UseUpdaterReturn {
     // ── Check for updates ─────────────────────────────────────────────────
     const checkForUpdates = useCallback(async () => {
         if (!isTauri || checkingRef.current) return;
+        
+        // Prevent checks that are too frequent (min 1 minute apart)
+        const now = Date.now();
+        if (now - lastCheckTimeRef.current < MIN_CHECK_INTERVAL_MS) {
+            console.log('[Updater] Check skipped - too soon since last check');
+            return;
+        }
+        
         checkingRef.current = true;
+        lastCheckTimeRef.current = now;
 
         setStatus('checking');
         setError(null);
@@ -112,6 +128,7 @@ export function useUpdater(): UseUpdaterReturn {
 
             if (update) {
                 pendingUpdateRef.current = update;
+                errorCountRef.current = 0; // Reset error count on success
                 setUpdateInfo({
                     version: update.version,
                     date:    update.date ?? null,
@@ -121,6 +138,7 @@ export function useUpdater(): UseUpdaterReturn {
                 console.log(`[Updater] Update available: v${update.version}`);
             } else {
                 pendingUpdateRef.current = null;
+                errorCountRef.current = 0; // Reset error count on success
                 setUpdateInfo(null);
                 setStatus('up-to-date');
                 console.log('[Updater] App is up to date.');
@@ -130,8 +148,9 @@ export function useUpdater(): UseUpdaterReturn {
                 setTimeout(() => setStatus('idle'), 8_000);
             }
         } catch (err) {
+            errorCountRef.current += 1;
             const msg = err instanceof Error ? err.message : String(err);
-            console.warn('[Updater] Check failed:', msg);
+            console.warn('[Updater] Check failed (attempt ' + errorCountRef.current + '):', msg);
             setError(msg);
             setStatus('error');
         } finally {
@@ -198,6 +217,7 @@ export function useUpdater(): UseUpdaterReturn {
         setUpdateInfo(null);
         setProgress(0);
         setError(null);
+        errorCountRef.current = 0; // Reset error count so manual retry works
         // Don't clear pendingUpdateRef — user can still trigger it later.
     }, []);
 
@@ -210,17 +230,22 @@ export function useUpdater(): UseUpdaterReturn {
         }, INITIAL_CHECK_DELAY_MS);
 
         const intervalTimer = setInterval(() => {
-            // Only re-check if idle (don't interrupt an active download etc.)
-            if (status === 'idle' || status === 'up-to-date' || status === 'error') {
-                checkForUpdates();
+            // Skip re-check if we've had multiple consecutive errors (prevents spam)
+            if (errorCountRef.current >= 3) {
+                console.log('[Updater] Skipping auto-check due to repeated errors');
+                return;
             }
+            // Only re-check if currently idle or up-to-date (not during error/download)
+            // Using a ref check to avoid dependency on status
+            checkForUpdates();
         }, RECHECK_INTERVAL_MS);
 
         return () => {
             clearTimeout(initialTimer);
             clearInterval(intervalTimer);
         };
-    }, [isTauri, checkForUpdates, status]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isTauri, checkForUpdates]); // Intentionally NOT including status
 
     return {
         isTauri,
