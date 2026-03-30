@@ -35,6 +35,14 @@ jobs:
       contents: write
 
     steps:
+      # ── Get version ──
+      - name: Get version
+        id: get_version
+        run: |
+          $version = (Get-Content apps/web/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
       # ── Checkout ──────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -82,9 +90,19 @@ jobs:
         with:
           projectPath: apps/web
           tauriScript: bun run tauri
-          tagName: v__VERSION__
-          releaseName: "Aurelius v__VERSION__"
-          releaseBody: |
+
+      # ── Create GitHub Release ──
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: "Aurelius v${{ env.VERSION }}"
+          draft: true
+          prerelease: false
+          body: |
             ## What's new
 
             See the [full changelog](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) for details.
@@ -94,6 +112,7 @@ jobs:
             ### Install / Update
             - **New install:** Download `Aurelius_x64-setup.exe` below and run it.
             - **Existing users:** The app will prompt you to update automatically.
-          releaseDraft: true
-          prerelease: false
-          updaterJsonPreferNsis: true
+          files: |
+            apps/web/src-tauri/target/release/bundle/nsis/Aurelius_*_x64-setup.exe
+            apps/web/src-tauri/target/release/bundle/nsis/Aurelius_*_x64-setup.exe.sig
+            apps/web/src-tauri/target/release/bundle/nsis/latest.json
