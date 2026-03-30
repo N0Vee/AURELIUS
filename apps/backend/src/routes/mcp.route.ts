@@ -4,6 +4,7 @@ import { getSettings, updateSettings } from '../config/settings.store.js';
 import { getAllConnections, connectServer, disconnectServer, reconnectAll, getAllMcpTools } from '../mcp/registry.js';
 import { convertMcpTools } from '../mcp/converter.js';
 import { register, unregister, getTool } from '../tools/registry.js';
+import { parseMcpConfig, type ParseResult } from '../mcp/config-parser.js';
 
 // ============================================================
 // MCP Routes
@@ -167,6 +168,61 @@ export const mcpRoutes = new Elysia({ prefix: '/mcp' })
                 name: t.tool.name,
                 description: t.tool.description,
             })),
+        };
+    })
+
+    // Import MCP servers from external config (Windsurf/Cursor format)
+    .post('/import', async ({ body }) => {
+        const settings = getSettings();
+        const parseResult = parseMcpConfig(body);
+
+        if (parseResult.errors.length > 0 && parseResult.servers.length === 0) {
+            return {
+                success: false,
+                added: 0,
+                errors: parseResult.errors,
+            };
+        }
+
+        const added: string[] = [];
+        const skipped: string[] = [];
+        const connectErrors: string[] = [];
+
+        // Merge with existing servers
+        const existingServers = [...settings.mcpServers];
+
+        for (const newServer of parseResult.servers) {
+            // Check for duplicate ID
+            if (existingServers.some(s => s.id === newServer.id)) {
+                skipped.push(`${newServer.name} (id: ${newServer.id} already exists)`);
+                continue;
+            }
+
+            existingServers.push(newServer);
+            added.push(newServer.id);
+
+            // Auto-connect if enabled
+            if (newServer.enabled) {
+                try {
+                    await connectServer(newServer);
+                    registerMcpToolsForServer(newServer.id);
+                } catch (error) {
+                    const msg = error instanceof Error ? error.message : String(error);
+                    connectErrors.push(`${newServer.name}: ${msg}`);
+                }
+            }
+        }
+
+        // Save updated settings
+        await updateSettings({ mcpServers: existingServers });
+
+        return {
+            success: true,
+            added: added.length,
+            addedIds: added,
+            skipped: skipped.length,
+            skippedNames: skipped,
+            errors: [...parseResult.errors, ...connectErrors],
         };
     });
 

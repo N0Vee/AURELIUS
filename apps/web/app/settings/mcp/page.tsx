@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useMcp, type McpServer, type McpTransport } from '@/hooks/useMcp';
 import { 
     Plus, 
@@ -15,7 +15,9 @@ import {
     ChevronRight,
     Check,
     AlertCircle,
-    Loader2
+    Loader2,
+    Upload,
+    FileJson
 } from 'lucide-react';
 
 // ============================================================
@@ -32,10 +34,12 @@ export default function McpSettingsPage() {
         deleteServer, 
         connectServer, 
         disconnectServer, 
-        refresh 
+        refresh,
+        importConfig
     } = useMcp();
 
     const [isAdding, setIsAdding] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
     const [expandedServer, setExpandedServer] = useState<string | null>(null);
 
     return (
@@ -49,6 +53,13 @@ export default function McpSettingsPage() {
                     </p>
                 </div>
                 <div className="flex gap-2">
+                    <button
+                        onClick={() => setIsImporting(true)}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-[var(--text)] transition-colors"
+                    >
+                        <Upload size={16} />
+                        Import
+                    </button>
                     <button
                         onClick={() => refresh()}
                         disabled={isLoading}
@@ -73,6 +84,14 @@ export default function McpSettingsPage() {
                     <AlertCircle size={16} />
                     {error}
                 </div>
+            )}
+
+            {/* Import Config Form */}
+            {isImporting && (
+                <ImportConfigForm
+                    onImport={importConfig}
+                    onCancel={() => setIsImporting(false)}
+                />
             )}
 
             {/* Add Server Form */}
@@ -286,6 +305,159 @@ function AddServerForm({
                     Add Server
                 </button>
             </div>
+        </form>
+    );
+}
+
+// ============================================================
+// Import Config Form
+// ============================================================
+
+function ImportConfigForm({
+    onImport,
+    onCancel,
+}: {
+    onImport: (config: unknown) => Promise<{ success: boolean; added: number; errors: string[]; skipped: number }>;
+    onCancel: () => void;
+}) {
+    const [jsonText, setJsonText] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [result, setResult] = useState<{ success: boolean; added: number; errors: string[]; skipped: number } | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const text = event.target?.result as string;
+                setJsonText(text);
+            } catch (err) {
+                console.error('Failed to read file:', err);
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        setResult(null);
+
+        try {
+            const parsed = JSON.parse(jsonText);
+            const importResult = await onImport(parsed);
+            setResult(importResult);
+        } catch (err) {
+            setResult({
+                success: false,
+                added: 0,
+                errors: ['Invalid JSON: ' + (err instanceof Error ? err.message : String(err))],
+                skipped: 0,
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleDone = () => {
+        if (result?.success) {
+            onCancel();
+        } else {
+            setResult(null);
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="mb-6 p-4 rounded-lg bg-[var(--surface)] border border-[var(--border)]">
+            <div className="flex items-center gap-2 mb-4">
+                <FileJson size={20} className="text-[var(--accent)]" />
+                <h3 className="font-medium text-[var(--text)]">Import MCP Config</h3>
+            </div>
+
+            {!result ? (
+                <>
+                    <p className="text-sm text-[var(--text-secondary)] mb-4">
+                        Paste JSON config from Windsurf, Cursor, or other MCP-compatible editors.
+                    </p>
+
+                    <textarea
+                        value={jsonText}
+                        onChange={(e) => setJsonText(e.target.value)}
+                        placeholder={`{\n  "mcpServers": {\n    "server-name": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-filesystem"]\n    }\n  }\n}`}
+                        className="w-full h-48 px-3 py-2 rounded-lg bg-[var(--background)] border border-[var(--border)] text-[var(--text)] font-mono text-sm focus:outline-none focus:border-[var(--accent)] resize-none"
+                    />
+
+                    <div className="flex items-center gap-4 mt-4">
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleFileUpload}
+                            accept=".json"
+                            className="hidden"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
+                        >
+                            <Upload size={16} />
+                            Upload File
+                        </button>
+                        <div className="flex-1" />
+                        <button
+                            type="button"
+                            onClick={onCancel}
+                            className="px-4 py-2 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={isSubmitting || !jsonText.trim()}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent)]/90 text-white transition-colors disabled:opacity-50"
+                        >
+                            {isSubmitting && <Loader2 size={16} className="animate-spin" />}
+                            Import
+                        </button>
+                    </div>
+                </>
+            ) : (
+                <div className="space-y-3">
+                    <div className={`p-3 rounded-lg ${result.success ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                        <div className="flex items-center gap-2 font-medium">
+                            {result.success ? <Check size={16} /> : <AlertCircle size={16} />}
+                            {result.success ? 'Import successful' : 'Import completed with errors'}
+                        </div>
+                        <div className="mt-2 text-sm space-y-1">
+                            <p>Added: {result.added} servers</p>
+                            {result.skipped > 0 && <p>Skipped: {result.skipped} (already exists)</p>}
+                        </div>
+                    </div>
+
+                    {result.errors.length > 0 && (
+                        <div className="p-3 rounded bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                            <p className="font-medium mb-2">Errors:</p>
+                            <ul className="list-disc list-inside space-y-1">
+                                {result.errors.map((err, i) => (
+                                    <li key={i}>{err}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    <div className="flex justify-end pt-2">
+                        <button
+                            onClick={handleDone}
+                            className="px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent)]/90 text-white transition-colors"
+                        >
+                            {result.success ? 'Done' : 'Try Again'}
+                        </button>
+                    </div>
+                </div>
+            )}
         </form>
     );
 }

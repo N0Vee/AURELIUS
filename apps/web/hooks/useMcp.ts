@@ -40,6 +40,7 @@ export interface UseMcpReturn {
     disconnectServer: (id: string) => Promise<boolean>;
     refresh: () => Promise<void>;
     getServerTools: (id: string) => Promise<McpTool[]>;
+    importConfig: (config: unknown) => Promise<{ success: boolean; added: number; errors: string[]; skipped: number }>;
 }
 
 // ============================================================
@@ -171,6 +172,29 @@ export function useMcp(): UseMcpReturn {
         }
     }, []);
 
+    const importConfig = useCallback(async (config: unknown): Promise<{ success: boolean; added: number; errors: string[]; skipped: number }> => {
+        try {
+            const response = await fetch(`${API_BASE}/mcp/import`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config),
+            });
+            if (!response.ok) throw new Error('Failed to import config');
+            const data = await response.json();
+            await fetchServers();
+            return {
+                success: data.success,
+                added: data.added || 0,
+                errors: data.errors || [],
+                skipped: data.skipped || 0,
+            };
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Failed to import config';
+            setError(msg);
+            return { success: false, added: 0, errors: [msg], skipped: 0 };
+        }
+    }, [fetchServers]);
+
     return {
         servers,
         isLoading,
@@ -182,5 +206,6 @@ export function useMcp(): UseMcpReturn {
         disconnectServer,
         refresh,
         getServerTools,
+        importConfig,
     };
 }

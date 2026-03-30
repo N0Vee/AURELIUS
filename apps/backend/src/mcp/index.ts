@@ -5,3 +5,4 @@ export * from './client.js';
 export * from './registry.js';
 export * from './converter.js';
 export * from './executor.js';
+export * from './config-parser.js';
