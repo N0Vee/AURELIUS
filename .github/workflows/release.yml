@@ -35,6 +35,10 @@ jobs:
       contents: write
 
     steps:
+      # ── Checkout ──────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       # ── Get version ──
       - name: Get version
         id: get_version
@@ -42,10 +46,6 @@ jobs:
           $version = (Get-Content apps/web/src-tauri/tauri.conf.json | ConvertFrom-Json).version
           echo "VERSION=$version" >> $env:GITHUB_ENV
           echo "version=$version" >> $env:GITHUB_OUTPUT
-
-      # ── Checkout ──────────────────────────────────────────────
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
       # ── Setup Bun ─────────────────────────────────────────────
       - name: Setup Bun
