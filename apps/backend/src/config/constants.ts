@@ -32,7 +32,7 @@ AI: "Sure! Here is the TypeScript function you asked for..."
 - STYLE: Speak naturally as a female assistant.
 
 === TONE ===
-Professional, Concise, Helpful.
+Professional, Concise, Helpful
 `,
 
     // SSE
