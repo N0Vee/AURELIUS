@@ -12,6 +12,7 @@ import {
     Workflow,
     Sparkles,
     Brain,
+    Server,
 } from 'lucide-react';
 
 interface NavItem {
@@ -31,6 +32,7 @@ const accountItems: NavItem[] = [
     { href: '/settings/automations', label: 'Automations', icon: <Workflow size={20} /> },
     { href: '/settings/skills', label: 'Skills', icon: <Sparkles size={20} /> },
     { href: '/settings/memory', label: 'Memory', icon: <Brain size={20} /> },
+    { href: '/settings/mcp', label: 'MCP Servers', icon: <Server size={20} /> },
 ];
 
 /**
