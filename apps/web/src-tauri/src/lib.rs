@@ -159,6 +159,21 @@ pub fn run() {
                 }
             });
 
+            // ── Listen for sidecar kill event (for updater) ──────────────
+            let handle_clone = app.handle().clone();
+            app.listen("kill-sidecar", move |_| {
+                if let Some(state) =
+                    handle_clone.try_state::<std::sync::Mutex<Option<CommandChild>>>()
+                {
+                    if let Ok(mut guard) = state.lock() {
+                        if let Some(child) = guard.take() {
+                            let _ = child.kill();
+                            log::info!("[backend] sidecar killed via event for update");
+                        }
+                    }
+                }
+            });
+
             // ── Autostart plugin ─────────────────────────────────────────
             // IMPORTANT: must be registered BEFORE the tray reads autolaunch()
             #[cfg(desktop)]

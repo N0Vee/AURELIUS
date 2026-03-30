@@ -198,8 +198,10 @@ export function useUpdater(): UseUpdaterReturn {
             setStatus('installing');
             console.log('[Updater] Update installed — relaunching...');
 
-            // Short delay so the user sees "Installing..." before the app restarts.
-            await new Promise(r => setTimeout(r, 800));
+            // Kill backend sidecar before relaunch so installer can overwrite files
+            const { emit } = await import('@tauri-apps/api/event');
+            await emit('kill-sidecar');
+            await new Promise(r => setTimeout(r, 500)); // Give time for process to die
 
             const { relaunch } = await import('@tauri-apps/plugin-process');
             await relaunch();
