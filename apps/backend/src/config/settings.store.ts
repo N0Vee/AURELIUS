@@ -115,6 +115,18 @@ export const SettingsSchema = z.object({
     allowedReadRoots: z.array(z.string()),
     allowedWriteRoot: z.string(),
     appSearchRoots: z.array(z.string()),
+
+    // MCP Servers
+    mcpServers: z.array(z.object({
+        id: z.string(),
+        name: z.string(),
+        transport: z.enum(['stdio', 'sse']),
+        command: z.string().optional(),
+        args: z.array(z.string()).optional(),
+        url: z.string().optional(),
+        env: z.record(z.string(), z.string()).optional(),
+        enabled: z.boolean().default(true),
+    })).default([]),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -164,6 +176,7 @@ function envDefaults(): Settings {
             path.join(home, 'AppData', 'Local'),
             path.join(home, 'AppData', 'Roaming'),
         ],
+        mcpServers: [],
     };
 }
 

@@ -15,6 +15,7 @@ import { skillsRoute } from './routes/skills.route';
 import { initSkills } from './skills/skills.store';
 import { getSystemStats } from './debug/hardware';
 import { getActiveProviderLabel } from './llm/provider';
+import { mcpRoutes, initMcpServers } from './routes/mcp.route.js';
 
 // Load settings.json (merges on top of env defaults) before handling any requests
 await initSettings();
@@ -27,6 +28,9 @@ await initSkills();
 
 // Load long-term memory store
 await initMemoryStore();
+
+// Initialize MCP servers
+await initMcpServers();
 
 const app = new Elysia()
     // CORS for Next.js frontend & Tauri desktop shell
@@ -81,6 +85,9 @@ const app = new Elysia()
 
     // Memory CRUD + search
     .use(memoryRoute)
+
+    // MCP server management
+    .use(mcpRoutes)
 
     // Chat routes
     .use(chatStreamRoute)

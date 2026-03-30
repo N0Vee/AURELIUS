@@ -8,6 +8,7 @@ import { getSettings } from '../config/settings.store';
 import { getAutomationByName, executeAutomation } from './automations';
 import { saveMemory, deleteMemory } from '../memory/memory.store';
 import { searchMemories, embedAndCacheMemory } from '../memory/memory.search';
+import { isMcpTool, executeMcpTool } from '../mcp/executor.js';
 
 const execAsync = promisify(exec);
 
@@ -1215,6 +1216,26 @@ export async function executeTool(
             }
 
             default: {
+                // ── Check for MCP tool ───────────────────────────────
+                if (isMcpTool(name)) {
+                    console.log(`[Executor] Executing MCP tool: ${name}`);
+                    try {
+                        const result = await executeMcpTool(name, args);
+                        // Format MCP result for LLM consumption
+                        if (typeof result === 'object' && result !== null) {
+                            const content = (result as { content?: Array<{ type: string; text?: string }> }).content;
+                            if (Array.isArray(content)) {
+                                return content.map(c => c.text || '').filter(Boolean).join('\n');
+                            }
+                            return JSON.stringify(result, null, 2);
+                        }
+                        return String(result);
+                    } catch (err) {
+                        const msg = err instanceof Error ? err.message : String(err);
+                        return `Error executing MCP tool: ${msg}`;
+                    }
+                }
+
                 // ── Check for custom automation ──────────────────────
                 const automation = getAutomationByName(name);
                 if (automation) {
