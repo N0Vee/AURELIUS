@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { DesktopDetector, useIsDesktop } from '@/components/layout/DesktopContext';
 import { UpdateNotification } from '@/components/layout/UpdateNotification';
+import { VoiceProvider } from '@/components/VoiceProvider';
 
 // ── Web Layout ────────────────────────────────────────────────────────────────
 function WebLayout({ children }: { children: React.ReactNode }) {
@@ -55,7 +56,9 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
 export function AppLayout({ children }: { children: React.ReactNode }) {
     return (
         <DesktopDetector>
-            <InnerLayout>{children}</InnerLayout>
+            <VoiceProvider>
+                <InnerLayout>{children}</InnerLayout>
+            </VoiceProvider>
         </DesktopDetector>
     );
 }

@@ -13,6 +13,7 @@ import { Send, Square, Trash2, MessageSquare, Mic, Minus, Monitor, ClipboardPast
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useIsDesktop } from '@/components/layout/DesktopContext';
+import { useVoice } from '@/components/VoiceProvider';
 import Image from 'next/image';
 
 type Mode = 'chat' | 'voice';
@@ -160,6 +161,14 @@ export default function ChatPage() {
     } = useChatSessions();
 
     const activeSession = sessions.find((s) => s.id === activeSessionId);
+
+    // Sync voice mode session with chat session
+    const { setSessionId: setVoiceSessionId } = useVoice();
+    useEffect(() => {
+        if (activeSessionId) {
+            setVoiceSessionId(activeSessionId);
+        }
+    }, [activeSessionId, setVoiceSessionId]);
 
     const {
         messages,

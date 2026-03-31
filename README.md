@@ -94,7 +94,7 @@ AURELIUS is a Bun-based monorepo with a split frontend / backend / services / ex
 ### Audio Engine
 - **Python**
 - **FastAPI**
-- **faster-whisper**
+- **VibeVoice-ASR** (4-bit quantized, 60-min single-pass)
 - **Silero VAD**
 - **edge-tts**
 
@@ -402,16 +402,16 @@ The audio engine runs as a separate Python service at `http://localhost:8000`.
 
 ### Capabilities
 - **Silero VAD** for voice activity detection
-- **faster-whisper** for speech-to-text transcription
+- **VibeVoice-ASR** for speech-to-text transcription (60-min single-pass, built-in diarization, 50+ languages, 4-bit quantized)
 - **edge-tts** for text-to-speech synthesis
 - Supports Thai and English workflows
 
 ### Notes
 Voice pipeline latency depends on:
-- Whisper model size
+- VibeVoice-ASR quantization level (4-bit fastest, none/FP16 slowest)
 - VAD silence thresholds
-- Beam size
 - Whether CUDA is available for inference
+- VRAM capacity (4-bit needs ~5GB, FP16 needs ~18GB)
 
 The voice stack is functional but has room for latency optimisation.
 
@@ -574,7 +574,7 @@ The project continues to move toward a **personal AI operating layer for Windows
 
 High-value improvements include:
 
-- Voice latency tuning (smaller Whisper model, VAD threshold optimisation, CUDA warm-up)
+- Voice latency tuning (VibeVoice-ASR quantization optimisation, VAD threshold tuning, CUDA warm-up)
 - Long-term memory and preference storage (vector DB or simple embedding cache)
 - Screen understanding workflows (screenshot → vision model → action)
 - Smarter path handling to reduce tool hallucination

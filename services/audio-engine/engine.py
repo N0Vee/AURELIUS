@@ -1,226 +1,285 @@
 import os
-import tempfile
+import sys
+import time
+import wave
+import struct
+from typing import Optional
 
 import numpy as np
-import torch
-from colorama import Fore, Style
+from scipy import signal
+
+os.environ["PYTHONUNBUFFERED"] = "1"
+
+
+def log(tag, msg):
+    print(f"[{tag}] {msg}", flush=True)
 
 
 class AudioEngine:
     def __init__(self):
-        self.model = None
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.transcriber = None
         self.is_ready = False
-        self.vad_model = None
+        self.language = os.getenv("MOONSHINE_LANGUAGE", "en")
+        self.model_path = None
+        self.model_arch = None
+        self._chunk_count = 0
+        self._input_sample_rate = 48000
 
     def initialize(self):
-        """
-        Load Faster-Whisper ASR model and Silero VAD.
-        This runs on startup.
-        """
-        print(
-            f"{Fore.CYAN}Initializing Audio Engine on {self.device}...{Style.RESET_ALL}"
-        )
-
+        log("INIT", "Starting Audio Engine...")
         try:
-            # 1. Load VAD (Silero)
-            self.vad_model, utils = torch.hub.load(
-                repo_or_dir="snakers4/silero-vad",
-                model="silero_vad",
-                force_reload=False,
-                trust_repo=True,
-            )
-            print(f"{Fore.GREEN}✅ VAD Model Loaded{Style.RESET_ALL}")
-
-            # 2. Load Faster-Whisper
-            print(f"{Fore.YELLOW}Loading Faster-Whisper (large-v3)...{Style.RESET_ALL}")
-            from faster_whisper import WhisperModel
-
-            # Use large-v3 for best accuracy, or "medium" for faster inference
-            # compute_type: float16 for GPU, int8 for CPU
-            compute_type = "float16" if self.device == "cuda" else "int8"
-
-            self.model = WhisperModel(
-                "large-v3", device=self.device, compute_type=compute_type
-            )
-
-            print(f"{Fore.GREEN}✅ Faster-Whisper Loaded Successfully{Style.RESET_ALL}")
-
+            self._load_moonshine()
             self.is_ready = True
-
+            log("INIT", "Audio Engine READY")
         except Exception as e:
-            print(f"{Fore.RED}❌ Error initializing engine: {e}{Style.RESET_ALL}")
+            log("INIT", f"FAILED: {e}")
             raise e
 
-    async def process_audio_stream(self, websocket):
-        """
-        Handle WebSocket audio stream.
-        1. Receive chunks
-        2. VAD processing
-        3. Buffer speech
-        4. Transcribe with Faster-Whisper
-        5. Send transcription back
-        """
-        print(f"{Fore.CYAN}Client connected to audio stream{Style.RESET_ALL}")
+    def _load_moonshine(self):
+        from moonshine_voice import Transcriber
+        from moonshine_voice.download import get_model_for_language
 
-        # Audio buffer for collecting speech frames
-        audio_buffer = []
-        sample_rate = 16000
-        is_speaking = False
-        silence_frames = 0
-        max_silence_frames = (
-            30  # ~1 second of silence to trigger transcription (was 15)
+        model_path = os.getenv("MOONSHINE_MODEL_PATH", "")
+        arch_name = os.getenv("MOONSHINE_MODEL_ARCH", "")
+
+        if not model_path:
+            log("MOONSHINE", f"Downloading model for '{self.language}'...")
+            model_path, model_arch = get_model_for_language(
+                wanted_language=self.language
+            )
+        else:
+            from moonshine_voice.moonshine_api import ModelArch
+
+            arch_map = {m.name: m for m in ModelArch}
+            model_arch = arch_map.get(arch_name.upper(), ModelArch.MEDIUM_STREAMING)
+
+        self.model_path = model_path
+        self.model_arch = model_arch
+        log("MOONSHINE", f"Loading {model_arch.name} from {model_path}")
+        self.transcriber = Transcriber(model_path=model_path, model_arch=model_arch)
+        log("MOONSHINE", "LOADED")
+
+    def _create_transcriber(self):
+        """Create a fresh transcriber instance."""
+        from moonshine_voice import Transcriber
+
+        return Transcriber(
+            model_path=self.model_path,
+            model_arch=self.model_arch,
         )
+
+    @staticmethod
+    def _resample(audio_data, from_rate, to_rate):
+        """Resample audio from one sample rate to another."""
+        if from_rate == to_rate:
+            return audio_data
+        num_samples = int(len(audio_data) * to_rate / from_rate)
+        resampled = signal.resample(audio_data, num_samples)
+        return resampled.astype(np.float32)
+
+    async def process_audio_stream(self, websocket):
+        """Handle WebSocket audio stream.
+        Buffers audio while recording, transcribes on toggle-off."""
+        log("WS", "Client connected")
+        recording = False
+        audio_buffer = []
         chunk_count = 0
 
         try:
             while True:
-                # Receive audio chunk (bytes)
-                data = await websocket.receive_bytes()
-                chunk_count += 1
+                message = await websocket.receive()
 
-                # Convert bytes to numpy array (float32, 16kHz mono)
-                audio_chunk = np.frombuffer(data, dtype=np.float32)
+                # JSON control message
+                if "text" in message:
+                    import json
 
-                # Debug: Log every 50 chunks
-                if chunk_count % 50 == 0:
-                    print(
-                        f"{Fore.YELLOW}[DEBUG] Received {chunk_count} chunks, last chunk size: {len(audio_chunk)}, max: {np.max(np.abs(audio_chunk)):.4f}{Style.RESET_ALL}"
-                    )
-
-                # Run VAD on current chunk
-                if len(audio_chunk) >= 512:
-                    speech_prob = self.vad_model(
-                        torch.from_numpy(audio_chunk), sample_rate
-                    ).item()
-
-                    # Debug: Log speech probability
-                    if speech_prob > 0.3:
-                        print(
-                            f"{Fore.GREEN}[VAD] Speech prob: {speech_prob:.2f}{Style.RESET_ALL}"
-                        )
-
-                    if speech_prob > 0.5:
-                        # Speech detected
-                        is_speaking = True
-                        silence_frames = 0
-                        audio_buffer.append(audio_chunk)
-
-                        await websocket.send_json(
-                            {
-                                "type": "vad",
-                                "speech_detected": True,
-                                "confidence": speech_prob,
-                            }
-                        )
-                    else:
-                        # Silence
-                        if is_speaking:
-                            silence_frames += 1
-                            audio_buffer.append(
-                                audio_chunk
-                            )  # Keep buffering during short silence
-
-                            # If enough silence after speech, transcribe
-                            if silence_frames >= max_silence_frames:
-                                # Concatenate all audio
-                                full_audio = np.concatenate(audio_buffer)
-                                print(
-                                    f"{Fore.CYAN}[TRANSCRIBE] Processing {len(full_audio)} samples ({len(full_audio) / 16000:.2f}s){Style.RESET_ALL}"
-                                )
-
-                                # Transcribe
-                                text = await self.transcribe_audio(full_audio)
-
-                                if text.strip():
-                                    print(
-                                        f"{Fore.GREEN}[RESULT] Transcription: {text}{Style.RESET_ALL}"
-                                    )
-                                    await websocket.send_json(
-                                        {
-                                            "type": "transcription",
-                                            "text": text,
-                                            "is_final": True,
-                                        }
-                                    )
-                                else:
-                                    print(
-                                        f"{Fore.YELLOW}[RESULT] Empty transcription{Style.RESET_ALL}"
-                                    )
-
-                                # Reset state
+                    try:
+                        ctrl = json.loads(message["text"])
+                        msg_type = ctrl.get("type", "")
+                        if msg_type == "recording":
+                            recording = ctrl.get("active", False)
+                            sample_rate = ctrl.get("sampleRate", 48000)
+                            log(
+                                "CTRL",
+                                f"Recording {'ON' if recording else 'OFF'} (sampleRate: {sample_rate}Hz)",
+                            )
+                            if recording:
+                                chunk_count = 0
                                 audio_buffer = []
-                                is_speaking = False
-                                silence_frames = 0
+                                self._input_sample_rate = sample_rate
+                                log("AUDIO", "Buffer cleared, ready to record")
+                            else:
+                                # Transcribe buffered audio
+                                if audio_buffer:
+                                    full_audio = np.concatenate(audio_buffer)
+                                    duration_s = (
+                                        len(full_audio) / self._input_sample_rate
+                                    )
+                                    log(
+                                        "TRANSCRIBE",
+                                        f"Processing {duration_s:.1f}s ({len(full_audio)} samples) @ {self._input_sample_rate}Hz",
+                                    )
+                                    # Save audio to WAV for debugging
+                                    wav_path = f"debug_audio_{chunk_count}.wav"
+                                    with wave.open(wav_path, "w") as wf:
+                                        wf.setnchannels(1)
+                                        wf.setsampwidth(4)  # 32-bit float
+                                        wf.setframerate(self._input_sample_rate)
+                                        for sample in full_audio:
+                                            wf.writeframes(struct.pack("<f", sample))
+                                    log("DEBUG", f"Saved {wav_path}")
+                                    text = self.transcribe_audio(full_audio)
+                                    if text:
+                                        log("RESULT", f"'{text}'")
+                                        await websocket.send_json(
+                                            {
+                                                "type": "transcription",
+                                                "text": text,
+                                                "is_final": True,
+                                            }
+                                        )
+                                    else:
+                                        log("RESULT", "EMPTY")
+                                else:
+                                    log("AUDIO", "No audio buffered")
+                                audio_buffer = []
+                    except (json.JSONDecodeError, KeyError) as e:
+                        log("WS", f"JSON parse error: {e}")
+                    continue
+
+                # Binary audio
+                if "bytes" not in message:
+                    continue
+
+                if not recording:
+                    continue
+
+                data = message["bytes"]
+                chunk_count += 1
+                audio_chunk = np.frombuffer(data, dtype=np.float32)
+                max_amp = (
+                    float(np.max(np.abs(audio_chunk))) if len(audio_chunk) > 0 else 0
+                )
+
+                if chunk_count % 100 == 0:
+                    log(
+                        "AUDIO",
+                        f"chunk={chunk_count} amp={max_amp:.6f} buf_size={len(audio_buffer)}",
+                    )
+                    # Log first few samples for debugging
+                    if chunk_count == 100:
+                        samples = audio_chunk[:10].tolist()
+                        log("DEBUG", f"First 10 samples: {samples}")
+                        log(
+                            "DEBUG",
+                            f"Chunk dtype: {audio_chunk.dtype}, len: {len(audio_chunk)}",
+                        )
+
+                # Buffer audio chunks
+                audio_buffer.append(audio_chunk)
 
         except Exception as e:
-            print(f"{Fore.YELLOW}Connection closed: {e}{Style.RESET_ALL}")
+            log("WS", f"Disconnected: {e}")
 
-    async def transcribe_audio(self, audio_data: np.ndarray) -> str:
-        """
-        Transcribe audio data using Faster-Whisper.
-        """
-        if not self.is_ready or self.model is None:
+    def transcribe_audio(self, audio_data: np.ndarray) -> str:
+        """Transcribe audio using Moonshine. Returns text string."""
+        if not self.is_ready or self.transcriber is None:
             return ""
 
         try:
-            # faster-whisper can transcribe from numpy array directly
-            segments, info = self.model.transcribe(
-                audio_data,
-                language=None,  # Auto-detect language (supports Thai, English, etc.)
-                beam_size=5,
-                vad_filter=True,  # Use built-in VAD for filtering
+            # Resample to 48kHz if needed
+            if self._input_sample_rate != 48000:
+                audio_data = self._resample(audio_data, self._input_sample_rate, 48000)
+                log("TRANSCRIBE", f"Resampled {self._input_sample_rate}Hz → 48kHz")
+
+            # Trim leading/trailing silence — Moonshine chokes on long silence
+            abs_audio = np.abs(audio_data)
+            threshold = 0.01
+            min_chunk = 1000  # 1000 samples at 48kHz ≈ 21ms
+
+            # Find first non-silent chunk
+            start = 0
+            for i in range(0, len(abs_audio) - min_chunk, min_chunk):
+                if np.max(abs_audio[i : i + min_chunk]) > threshold:
+                    start = i
+                    break
+
+            # Find last non-silent chunk
+            end = len(audio_data)
+            for i in range(len(abs_audio) - min_chunk, 0, -min_chunk):
+                if np.max(abs_audio[i : i + min_chunk]) > threshold:
+                    end = i + min_chunk
+                    break
+
+            if end - start < min_chunk * 2:
+                log("TRANSCRIBE", "Audio too quiet, skipping")
+                return ""
+
+            audio_data = audio_data[start:end]
+            log(
+                "TRANSCRIBE",
+                f"Trimmed silence: {len(audio_data)} samples ({len(audio_data) / 48000:.2f}s)",
             )
 
-            # Collect all segment texts
-            text = " ".join([segment.text for segment in segments])
-            return text.strip()
+            # Save trimmed audio for debugging
+            wav_path = f"debug_transcribe_{int(time.time())}.wav"
+            with wave.open(wav_path, "w") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(4)
+                wf.setframerate(48000)
+                for sample in audio_data:
+                    wf.writeframes(struct.pack("<f", sample))
+            log("DEBUG", f"Saved {wav_path}")
+
+            audio_list = audio_data.tolist()
+            log(
+                "TRANSCRIBE",
+                f"Calling transcribe_without_streaming with {len(audio_list)} samples @ 48kHz",
+            )
+            transcript = self.transcriber.transcribe_without_streaming(
+                audio_list, sample_rate=48000
+            )
+            log("TRANSCRIBE", f"Got {len(transcript.lines)} lines")
+            for i, line in enumerate(transcript.lines):
+                log("TRANSCRIBE", f"  Line {i}: '{line.text}'")
+            parts = [
+                line.text.strip() for line in transcript.lines if line.text.strip()
+            ]
+            return " ".join(parts)
 
         except Exception as e:
-            print(f"{Fore.RED}Transcription error: {e}{Style.RESET_ALL}")
+            log("TRANSCRIBE", f"ERROR: {e}")
+            import traceback
+
+            traceback.print_exc()
             return ""
 
-    async def synthesize_speech(self, text: str, voice: str = None) -> bytes:
-        """
-        Convert text to speech using edge-tts.
-        Returns MP3 audio bytes.
-        """
+    async def synthesize_speech(self, text: str, voice: Optional[str] = None) -> bytes:
+        """Convert text to speech using edge-tts. Returns MP3 bytes."""
         import io
-
         import edge_tts
 
-        # Safety: If text contains Thai, FORCE Thai voice (to prevent mistmatch errors)
         has_thai = any("\u0e00" <= c <= "\u0e7f" for c in text)
         if has_thai:
             voice = "th-TH-PremwadeeNeural"
         elif voice is None:
-            # Default to English if no voice specified and no Thai
             voice = "en-US-JennyNeural"
 
+        log("TTS", f"Synthesizing: '{text[:80]}' with {voice}")
+
         try:
-            print(
-                f"{Fore.CYAN}[TTS] Synthesizing: {text[:50]}... (voice: {voice}){Style.RESET_ALL}"
-            )
-
-            # Create TTS communication
             communicate = edge_tts.Communicate(text, voice)
-
-            # Collect audio chunks
             audio_data = io.BytesIO()
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
                     audio_data.write(chunk["data"])
-
             audio_bytes = audio_data.getvalue()
-            print(
-                f"{Fore.GREEN}[TTS] Generated {len(audio_bytes)} bytes{Style.RESET_ALL}"
-            )
+            log("TTS", f"Generated {len(audio_bytes)} bytes")
             return audio_bytes
 
         except Exception as e:
-            print(f"{Fore.RED}[TTS] Error: {e}{Style.RESET_ALL}")
+            log("TTS", f"ERROR: {e}")
             return b""
 
 
-# Global instance
 engine = AudioEngine()

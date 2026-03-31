@@ -16,6 +16,7 @@ const ChatRequestSchema = z.object({
     messages: z.array(ChatMessageSchema),
     session_id:    z.string().max(128).optional(),
     session_title: z.string().max(128).optional(),
+    voice_mode:    z.boolean().optional().default(false),
 });
 
 const MAX_TOOL_ITERATIONS = 10;
@@ -72,9 +73,28 @@ async function* agentLoop(
     initialMessages: ChatMessage[],
     sessionId?: string,
     sessionTitle?: string,
+    voiceMode?: boolean,
 ): AsyncGenerator<string, void, unknown> {
     // Work on a mutable copy so we can append tool results
     const messages: ChatMessage[] = [...initialMessages];
+
+    // ── Voice mode injection ──────────────────────────────────────────────────
+    if (voiceMode) {
+        messages.unshift({
+            id: crypto.randomUUID(),
+            role: 'system',
+            content: `[VOICE MODE ACTIVE]
+You are responding via voice. Rules:
+- Keep responses under 2-3 sentences when possible
+- For complex tasks (code, long lists, detailed analysis), do the work but say "I've done that, check the app for details" and describe the result briefly
+- When requesting tool confirmation, be brief: "Should I open [file]?" not verbose
+- After tool execution, summarize in 1 sentence
+- Never output markdown formatting, code blocks, or special characters — speak naturally
+- Match the user's language`,
+            timestamp: Date.now(),
+        });
+        console.log(`[AgentLoop] Voice mode active`);
+    }
 
     // ── Active skill injection ────────────────────────────────────────────────
     // If the user has an active skill, prepend its instructions as a system
@@ -433,12 +453,12 @@ export const chatStreamRoute = new Elysia({ prefix: '/chat' })
     .post(
         '/stream',
         async function* ({ body }) {
-            const { messages, session_id, session_title } = ChatRequestSchema.parse(body);
+            const { messages, session_id, session_title, voice_mode } = ChatRequestSchema.parse(body);
 
             yield `event: connected\ndata: ${JSON.stringify({ status: 'connected' })}\n\n`;
 
             try {
-                yield* agentLoop(messages, session_id, session_title);
+                yield* agentLoop(messages, session_id, session_title, voice_mode);
                 yield `event: done\ndata: ${JSON.stringify({ status: 'complete' })}\n\n`;
             } catch (error) {
                 const rawMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -456,6 +476,7 @@ export const chatStreamRoute = new Elysia({ prefix: '/chat' })
                 messages:      t.Array(t.Any()),
                 session_id:    t.Optional(t.String()),
                 session_title: t.Optional(t.String()),
+                voice_mode:    t.Optional(t.Boolean()),
             }),
         }
     );

@@ -49,17 +49,22 @@ export function useAudioEngine(url: string, onTranscription?: (text: string) => 
     const connect = useCallback(() => {
         if (ws.current?.readyState === WebSocket.OPEN) return;
 
+        console.log('[AudioEngine] Connecting to', url);
         ws.current = new WebSocket(url);
 
         ws.current.onopen = () => {
-            console.log('Audio Engine Connected');
+            console.log('[AudioEngine] Connected');
             setIsConnected(true);
         };
 
-        ws.current.onclose = () => {
-            console.log('Audio Engine Disconnected');
+        ws.current.onclose = (event) => {
+            console.log('[AudioEngine] Disconnected', event.code, event.reason);
             setIsConnected(false);
             setIsRecording(false);
+        };
+
+        ws.current.onerror = (event) => {
+            console.error('[AudioEngine] WebSocket error:', event);
         };
 
         ws.current.onmessage = async (event) => {
@@ -118,16 +123,16 @@ export function useAudioEngine(url: string, onTranscription?: (text: string) => 
             workletNode.current.port.onmessage = (event) => {
                 const inputData = event.data; // Float32Array
 
-                // Perform downsampling if needed (though we requested 16kHz)
-                // For now, assume context is 16kHz or browser handled it.
-                // We send raw float32 bytes for simplicity in this prototype phase
                 if (ws.current?.readyState === WebSocket.OPEN) {
                     ws.current.send(inputData.buffer);
                 }
             };
 
             source.connect(workletNode.current);
-            workletNode.current.connect(audioContext.current.destination); // Connect to output to keep it alive (muted?)
+            workletNode.current.connect(audioContext.current.destination);
+
+            // Tell backend recording started
+            ws.current.send(JSON.stringify({ type: 'recording', active: true }));
 
             setIsRecording(true);
 
@@ -137,6 +142,10 @@ export function useAudioEngine(url: string, onTranscription?: (text: string) => 
     }, []);
 
     const stopRecording = useCallback(() => {
+        // Tell backend recording stopped
+        if (ws.current?.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'recording', active: false }));
+        }
         if (stream.current) {
             stream.current.getTracks().forEach(track => track.stop());
             stream.current = null;

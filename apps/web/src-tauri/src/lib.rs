@@ -2,6 +2,7 @@ use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 use tauri::Listener;
+use tauri::Emitter;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
@@ -89,6 +90,8 @@ pub fn run() {
                         .permission("core:window:allow-toggle-maximize")
                         .permission("core:webview:allow-set-webview-background-color")
                         .permission("global-shortcut:allow-register")
+                        .permission("event:allow-listen")
+                        .permission("event:allow-emit")
                         .permission("shell:allow-execute")
                         .permission("autostart:allow-enable")
                         .permission("autostart:allow-disable")
@@ -298,6 +301,11 @@ pub fn run() {
                 let toggle_shortcut_for_handler = toggle_shortcut.clone();
                 let handle_for_shortcut = handle.clone();
 
+                // F8 → toggle voice recording
+                let voice_shortcut = Shortcut::new(None, Code::F8);
+                let voice_shortcut_for_handler = voice_shortcut.clone();
+                let handle_for_voice = handle.clone();
+
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_handler(move |_app, shortcut, event| {
@@ -314,11 +322,18 @@ pub fn run() {
                                     }
                                 }
                             }
+
+                            if shortcut == &voice_shortcut_for_handler
+                                && event.state() == ShortcutState::Pressed
+                            {
+                                let _ = handle_for_voice.emit("voice-toggle", ());
+                            }
                         })
                         .build(),
                 )?;
 
                 app.global_shortcut().register(toggle_shortcut)?;
+                app.global_shortcut().register(voice_shortcut)?;
             }
 
             Ok(())
