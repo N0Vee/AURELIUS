@@ -55,6 +55,31 @@ async function fetchToolMetadata(): Promise<Record<string, ToolMeta>> {
     return {};
 }
 
+/** Fetch tool metadata with retry + backoff (handles backend starting after frontend) */
+function fetchToolMetadataWithRetry(
+    onResult: (m: Record<string, ToolMeta>) => void,
+    retries = 4,
+    delay = 1500,
+) {
+    let attempt = 0;
+    const tryFetch = () => {
+        fetchToolMetadata().then((m) => {
+            if (Object.keys(m).length > 0) {
+                onResult(m);
+            } else if (attempt < retries) {
+                attempt++;
+                setTimeout(tryFetch, delay * attempt);
+            }
+        }).catch(() => {
+            if (attempt < retries) {
+                attempt++;
+                setTimeout(tryFetch, delay * attempt);
+            }
+        });
+    };
+    tryFetch();
+}
+
 // ── Markdown component overrides ──────────────────────────────────────────────
 
 const markdownComponents: Record<string, React.ComponentType<Record<string, unknown>>> = {
@@ -221,10 +246,10 @@ function ProcessStrip({
     }
 
     return (
-        <div className="flex flex-col">
+        <div className="flex flex-col ml-0.5">
             <button
                 onClick={() => setOpen(!open)}
-                className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors py-0.5 px-1 -mx-1 rounded-md hover:bg-[var(--surface)]/50 w-fit"
+                className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors py-1 px-2 rounded-lg hover:bg-[var(--surface)]/50 w-fit flex-wrap"
             >
                 <ChevronDown
                     size={10}
@@ -234,23 +259,23 @@ function ProcessStrip({
 
                 {/* Inline tool chips (collapsed preview) */}
                 {!open && completedTools.length > 0 && (
-                    <span className="flex items-center gap-1 ml-1">
+                    <span className="flex items-center gap-1.5 ml-1.5 flex-wrap">
                         {completedTools.map((t, i) => (
                             <span
                                 key={i}
                                 className={cn(
-                                    'inline-flex items-center gap-0.5 px-1.5 py-0 rounded-full text-[10px] font-medium',
+                                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium',
                                     t.state === 'output-error' || t.state === 'output-denied'
                                         ? 'bg-[var(--dangerous)]/10 text-[var(--dangerous)]'
                                         : 'bg-[var(--safe)]/10 text-[var(--safe)]',
                                 )}
                             >
                                 {t.state === 'output-error' ? (
-                                    <AlertCircle size={8} />
+                                    <AlertCircle size={9} />
                                 ) : t.state === 'output-denied' ? (
-                                    <X size={8} />
+                                    <X size={9} />
                                 ) : (
-                                    <Check size={8} />
+                                    <Check size={9} />
                                 )}
                                 {t.name}
                             </span>
@@ -268,7 +293,7 @@ function ProcessStrip({
                         transition={{ duration: 0.2 }}
                         className="overflow-hidden"
                     >
-                        <div className="mt-1.5 ml-1 pl-2.5 border-l border-[var(--border)] flex flex-col gap-1.5">
+                        <div className="mt-2 ml-2 pl-3 border-l border-[var(--border)] flex flex-col gap-2">
                             {/* Completed tools detail */}
                             {completedTools.map((t, i) => {
                                 const isErr = t.state === 'output-error';
@@ -377,7 +402,14 @@ function UserBubble({ message }: { message: UIMessage }) {
         .filter((p): p is { type: 'file'; url: string; mediaType: string } =>
             p.type === 'file' && (p as { mediaType?: string }).mediaType?.startsWith('image/') === true,
         )
-        .map((p) => p.url);
+        .map((p) => {
+            // SDK v6 FileUIPart uses `url`, but base64 inline files may use `data`
+            if (p.url) return p.url;
+            const data = (p as { data?: string }).data;
+            if (data) return `data:${p.mediaType};base64,${data}`;
+            return '';
+        })
+        .filter(Boolean);
 
     return (
         <motion.div
@@ -709,9 +741,9 @@ export function ChatWindow({
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    // Fetch tool metadata once
+    // Fetch tool metadata (retries if backend not ready yet)
     useEffect(() => {
-        fetchToolMetadata().then(setToolMeta).catch(() => {});
+        fetchToolMetadataWithRetry(setToolMeta);
     }, []);
 
     const isActive = status === 'submitted' || status === 'streaming';

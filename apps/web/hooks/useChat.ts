@@ -15,11 +15,40 @@
 import { useChat as useAIChat } from '@ai-sdk/react';
 import {
     DefaultChatTransport,
+    jsonSchema,
     lastAssistantMessageIsCompleteWithToolCalls,
     type UIMessage,
 } from 'ai';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { db } from '@/lib/db';
+
+// ============================================================
+// Message metadata schema (usage data sent by the backend)
+// ============================================================
+
+interface ChatMessageMetadata {
+    usage?: {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+    };
+    model?: string;
+}
+
+const chatMetadataSchema = jsonSchema<ChatMessageMetadata>({
+    type: 'object',
+    properties: {
+        usage: {
+            type: 'object',
+            properties: {
+                promptTokens: { type: 'number' },
+                completionTokens: { type: 'number' },
+                totalTokens: { type: 'number' },
+            },
+        },
+        model: { type: 'string' },
+    },
+});
 
 // ============================================================
 // Constants
@@ -104,6 +133,7 @@ export function useChat(options: UseChatOptions = {}) {
     const chat = useAIChat({
         id: sessionId ?? undefined,
         transport,
+        messageMetadataSchema: chatMetadataSchema,
 
         // Client-handled tools (without server execute) arrive here.
         // Return undefined → tool stays pending for manual approve / reject.
@@ -129,6 +159,25 @@ export function useChat(options: UseChatOptions = {}) {
             } catch (err: unknown) {
                 savedIdsRef.current.delete(message.id);
                 console.error('[useChat] Failed to persist assistant message:', err);
+            }
+
+            // Persist token usage for the session token bar
+            const meta = message.metadata as ChatMessageMetadata | undefined;
+            if (meta?.usage) {
+                try {
+                    const existing = await db.sessionUsage.get(sid);
+                    await db.sessionUsage.put({
+                        sessionId: sid,
+                        promptTokens: (existing?.promptTokens ?? 0) + (meta.usage.promptTokens ?? 0),
+                        completionTokens: (existing?.completionTokens ?? 0) + (meta.usage.completionTokens ?? 0),
+                        totalTokens: (existing?.totalTokens ?? 0) + (meta.usage.totalTokens ?? 0),
+                        model: meta.model ?? existing?.model ?? '',
+                        turnCount: (existing?.turnCount ?? 0) + 1,
+                        updatedAt: Date.now(),
+                    });
+                } catch (err) {
+                    console.error('[useChat] Failed to persist usage:', err);
+                }
             }
         },
 
@@ -291,12 +340,36 @@ export function useChat(options: UseChatOptions = {}) {
         [chat.addToolOutput],
     );
 
-    // ── Send a text message (matches the v1 API shape) ────────────────────
+    // ── Send a text message with optional image attachments ──────────────
     const sendMessage = useCallback(
-        async (content: string, _images?: string[]) => {
-            if (!content.trim()) return;
-            // TODO: convert images to FileUIPart[] once image support is wired
-            await chat.sendMessage({ text: content.trim() });
+        async (content: string, images?: string[]) => {
+            if (!content.trim() && (!images || images.length === 0)) return;
+
+            const text = content.trim();
+
+            if (images && images.length > 0) {
+                // Convert base64 data-URLs to FileUIPart[]
+                const files = images.map((dataUrl) => {
+                    // data:image/png;base64,iVBOR... → extract mediaType + raw base64
+                    const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+                    if (match) {
+                        return {
+                            type: 'file' as const,
+                            data: match[2],
+                            mediaType: match[1],
+                        };
+                    }
+                    // Fallback: treat as a URL
+                    return {
+                        type: 'file' as const,
+                        url: dataUrl,
+                        mediaType: 'image/png',
+                    };
+                });
+                await chat.sendMessage({ text, files });
+            } else {
+                await chat.sendMessage({ text });
+            }
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [chat.sendMessage],

@@ -269,7 +269,27 @@ export const chatStreamRoute = new Elysia({ prefix: '/v2/chat' })
                     },
                 });
 
-                return result.toUIMessageStreamResponse();
+                // Resolve model name so the frontend can display it in the token bar
+                const modelName =
+                    settings.llmProvider === 'openrouter'
+                        ? settings.openrouterModel
+                        : settings.ollamaModel;
+
+                return result.toUIMessageStreamResponse({
+                    messageMetadata: ({ part }) => {
+                        if (part.type === 'finish') {
+                            return {
+                                usage: {
+                                    promptTokens: part.totalUsage.inputTokens ?? 0,
+                                    completionTokens: part.totalUsage.outputTokens ?? 0,
+                                    totalTokens: part.totalUsage.totalTokens ?? 0,
+                                },
+                                model: modelName,
+                            };
+                        }
+                        return undefined;
+                    },
+                });
             } catch (err) {
                 const raw =
                     err instanceof Error ? err.message : String(err);
@@ -310,6 +330,7 @@ export const chatStreamRoute = new Elysia({ prefix: '/v2/chat' })
 
             console.log(
                 `[ChatStreamV2] Executing approved tool: ${name} (${permission})`,
+                '| args:', JSON.stringify(args),
             );
 
             try {

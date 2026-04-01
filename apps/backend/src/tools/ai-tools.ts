@@ -39,7 +39,7 @@ export function getAITools(options?: {
             // SAFE → auto-execute on server during streamText steps
             tools[def.name] = {
                 description: def.openAITool.function.description,
-                parameters: schema,
+                inputSchema: schema,
                 execute: async (args: Record<string, unknown>) =>
                     executeTool(def.name, args),
             };
@@ -47,7 +47,7 @@ export function getAITools(options?: {
             // SENSITIVE / DANGEROUS → no execute; client must approve first
             tools[def.name] = {
                 description: def.openAITool.function.description,
-                parameters: schema,
+                inputSchema: schema,
             };
         }
     }

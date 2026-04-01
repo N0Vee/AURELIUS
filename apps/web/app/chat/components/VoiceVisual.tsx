@@ -1,15 +1,13 @@
 'use client';
 
-import { useVoice } from '@/components/VoiceProvider';
-import { Mic, MicOff, Languages, Check, X, AlertTriangle, Zap, Loader2, Send } from 'lucide-react';
+import { useVoice, detectVoiceDecision } from '@/components/VoiceProvider';
+import { Mic, MicOff, Check, X, AlertTriangle, Zap, Loader2, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { cn, isToolPart } from '@/lib/utils';
 import { getToolName } from 'ai';
 
 interface VoiceVisualProps {
-    language: 'th' | 'en';
-    onLanguageChange: (lang: 'th' | 'en') => void;
     messages: any[];
     isStreaming: boolean;
     onSend: (text: string) => void;
@@ -185,7 +183,7 @@ function MessageBubble({ msg, isStreaming, isLast, onApprove, onReject }: { msg:
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function VoiceVisual({ language, onLanguageChange, messages, isStreaming, onSend, onApprove, onReject, pendingConfirmId }: VoiceVisualProps) {
+export function VoiceVisual({ messages, isStreaming, onSend, onApprove, onReject, pendingConfirmId }: VoiceVisualProps) {
     const { isConnected, isRecording, isSpeaking, toggleRecording, onTranscription, onToolConfirm } = useVoice();
     const scrollRef = useRef<HTMLDivElement>(null);
     const [textInput, setTextInput] = useState('');
@@ -211,7 +209,24 @@ export function VoiceVisual({ language, onLanguageChange, messages, isStreaming,
 
     const handleTextSend = () => {
         if (!textInput.trim() || isStreaming) return;
-        onSend(textInput.trim());
+        const text = textInput.trim();
+
+        // Intercept yes/no keywords when a tool is awaiting confirmation
+        if (pendingConfirmId) {
+            const decision = detectVoiceDecision(text);
+            if (decision === 'approve') {
+                onApprove(pendingConfirmId);
+                setTextInput('');
+                return;
+            }
+            if (decision === 'reject') {
+                onReject(pendingConfirmId);
+                setTextInput('');
+                return;
+            }
+        }
+
+        onSend(text);
         setTextInput('');
     };
 
@@ -222,12 +237,6 @@ export function VoiceVisual({ language, onLanguageChange, messages, isStreaming,
                 <div className="flex items-center gap-2">
                     {!isConnected && <span className="text-xs text-[var(--dangerous)]">Disconnected</span>}
                     {isStreaming && <Loader2 size={14} className="animate-spin text-[var(--accent)]" />}
-                    <button
-                        onClick={() => onLanguageChange(language === 'th' ? 'en' : 'th')}
-                        className="flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--surface)] hover:bg-[var(--surface-active)] text-xs text-[var(--text-secondary)]"
-                    >
-                        <Languages size={12} />{language === 'th' ? 'TH' : 'EN'}
-                    </button>
                 </div>
             </div>
 

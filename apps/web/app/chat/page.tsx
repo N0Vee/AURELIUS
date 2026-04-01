@@ -1,13 +1,18 @@
 'use client';
 
-import { useState, FormEvent, useRef, useEffect, useCallback } from 'react';
+import { useState, FormEvent, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useChat } from '@/hooks/useChat';
 import { useChatSessions } from '@/hooks/useChatSessions';
 import { useScreenCapture } from '@/hooks/useScreenCapture';
+import { useSettings } from '@/hooks/useSettings';
+import { useSessionTokens } from '@/hooks/useSessionTokens';
+import { useOpenRouterModels } from '@/hooks/useOpenRouterModels';
 import { useTauriDrag } from '@/hooks/useTauriDrag';
 import { ChatWindow } from './components/ChatWindow';
 import { SessionSidebar } from './components/SessionSidebar';
 import { VoiceVisual } from './components/VoiceVisual';
+import { SlashCommandMenu, buildDefaultCommands } from './components/SlashCommandMenu';
+import { TokenUsageBar } from './components/TokenUsageBar';
 import { Button } from '@/components/ui';
 import { Send, Square, Trash2, MessageSquare, Mic, Minus, Monitor, ClipboardPaste, X, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -132,11 +137,13 @@ function WebTitleBar({
     onModeChange,
     onClear,
     canClear,
+    tokenBar,
 }: {
     mode: Mode;
     onModeChange: (m: Mode) => void;
     onClear: () => void;
     canClear: boolean;
+    tokenBar?: React.ReactNode;
 }) {
     return (
         <>
@@ -190,16 +197,19 @@ function WebTitleBar({
                         </button>
                     </div>
                 </div>
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onClear}
-                    disabled={!canClear}
-                    className="gap-2"
-                >
-                    <Trash2 size={16} />
-                    Clear
-                </Button>
+                <div className="flex items-center gap-3">
+                    {tokenBar}
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onClear}
+                        disabled={!canClear}
+                        className="gap-2"
+                    >
+                        <Trash2 size={16} />
+                        Clear
+                    </Button>
+                </div>
             </header>
         </>
     );
@@ -210,7 +220,6 @@ export default function ChatPage() {
     const isDesktop = useIsDesktop();
     const [mode, setMode] = useState<Mode>('chat');
     const [input, setInput] = useState('');
-    const [language, setLanguage] = useState<'th' | 'en'>('th');
 
     // ── Session management ─────────────────────────────────────────────────
     const {
@@ -239,6 +248,75 @@ export default function ChatPage() {
         sessionId:    activeSessionId,
         sessionTitle: activeSession?.title,
     });
+
+    // ── Settings (for model info in slash commands) ──────────────────────────
+    const { settings } = useSettings();
+
+    // ── Token usage ─────────────────────────────────────────────────────────
+    const sessionTokens = useSessionTokens(activeSessionId);
+    const { models: orModels } = useOpenRouterModels(settings?.openrouterApiKeySet ?? false);
+    const activeModelContextLimit = useMemo(() => {
+        if (settings?.llmProvider !== 'openrouter') return undefined;
+        const modelId = settings?.openrouterModel;
+        if (!modelId) return undefined;
+        const match = orModels.find((m) => m.id === modelId);
+        return match?.context_length ?? undefined;
+    }, [settings?.llmProvider, settings?.openrouterModel, orModels]);
+
+    // ── Slash commands ────────────────────────────────────────────────────────
+    const [slashOpen, setSlashOpen] = useState(false);
+    const [slashIndex, setSlashIndex] = useState(0);
+    const [slashToast, setSlashToast] = useState<string | null>(null);
+
+    // Auto-clear toast after 3 s
+    useEffect(() => {
+        if (!slashToast) return;
+        const t = setTimeout(() => setSlashToast(null), 3000);
+        return () => clearTimeout(t);
+    }, [slashToast]);
+
+    const slashCommands = useMemo(
+        () =>
+            buildDefaultCommands({
+                clearMessages,
+                createSession,
+                toggleVoice: () => setMode((m) => (m === 'chat' ? 'voice' : 'chat')),
+                showModel: () => {
+                    const provider = settings?.llmProvider ?? 'unknown';
+                    const model =
+                        provider === 'openrouter'
+                            ? settings?.openrouterModel
+                            : settings?.ollamaModel;
+                    setSlashToast(`${provider}: ${model ?? 'not configured'}`);
+                },
+            }),
+        [clearMessages, createSession, settings],
+    );
+
+    const slashFilter = slashOpen ? input.slice(1).toLowerCase() : '';
+
+    const filteredSlashCommands = useMemo(() => {
+        if (!slashFilter) return slashCommands;
+        return slashCommands.filter(
+            (c) =>
+                c.command.toLowerCase().includes(slashFilter) ||
+                c.label.toLowerCase().includes(slashFilter),
+        );
+    }, [slashFilter, slashCommands]);
+
+    // Reset index when filter changes
+    useEffect(() => {
+        setSlashIndex(0);
+    }, [slashFilter]);
+
+    const handleSlashSelect = useCallback(
+        (cmd: typeof slashCommands[number]) => {
+            cmd.action();
+            setInput('');
+            setSlashOpen(false);
+        },
+        [],
+    );
 
     // Sync voice mode session with chat session
     const { setSessionId: setVoiceSessionId, speakText } = useVoice();
@@ -361,6 +439,96 @@ export default function ChatPage() {
     const { pendingImage, captureScreen, pasteFromClipboard, clearPendingImage } = useScreenCapture();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+    // ── Drag & drop file attachments ──────────────────────────────────────────
+    interface PendingFile {
+        id: string;
+        name: string;
+        mediaType: string;
+        data: string;            // base64 for images, text content for text files
+        preview?: string;        // data URL thumbnail for images
+    }
+
+    const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+    const [isDragging, setIsDragging] = useState(false);
+    const dragCounter = useRef(0);
+
+    const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+    const TEXT_EXTENSIONS = ['.txt', '.md', '.json', '.csv', '.ts', '.tsx', '.js', '.jsx', '.py', '.rs', '.toml', '.yaml', '.yml', '.html', '.css', '.xml', '.sh', '.ps1', '.bat', '.cfg', '.ini', '.log'];
+    const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 MB
+    const MAX_TEXT_SIZE = 100 * 1024;         // 100 KB
+
+    const addDroppedFiles = useCallback((fileList: FileList) => {
+        Array.from(fileList).forEach((file) => {
+            if (IMAGE_TYPES.includes(file.type) && file.size <= MAX_IMAGE_SIZE) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const dataUrl = reader.result as string;
+                    setPendingFiles((prev) => [
+                        ...prev,
+                        {
+                            id: crypto.randomUUID(),
+                            name: file.name,
+                            mediaType: file.type,
+                            data: dataUrl,
+                            preview: dataUrl,
+                        },
+                    ]);
+                };
+                reader.readAsDataURL(file);
+            } else if (file.size <= MAX_TEXT_SIZE) {
+                const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+                if (TEXT_EXTENSIONS.includes(ext) || file.type.startsWith('text/')) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        setPendingFiles((prev) => [
+                            ...prev,
+                            {
+                                id: crypto.randomUUID(),
+                                name: file.name,
+                                mediaType: file.type || 'text/plain',
+                                data: reader.result as string,
+                            },
+                        ]);
+                    };
+                    reader.readAsText(file);
+                }
+            }
+        });
+    }, []);
+
+    const removePendingFile = useCallback((id: string) => {
+        setPendingFiles((prev) => prev.filter((f) => f.id !== id));
+    }, []);
+
+    const handleDragEnter = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        dragCounter.current++;
+        if (e.dataTransfer.types.includes('Files')) {
+            setIsDragging(true);
+        }
+    }, []);
+
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        dragCounter.current--;
+        if (dragCounter.current === 0) {
+            setIsDragging(false);
+        }
+    }, []);
+
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+    }, []);
+
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        dragCounter.current = 0;
+        setIsDragging(false);
+        if (e.dataTransfer.files.length > 0) {
+            addDroppedFiles(e.dataTransfer.files);
+        }
+    }, [addDroppedFiles]);
+
     // ── Hide overlay window (Tauri only) ──────────────────────────────────────
     const hideWindow = useCallback(async () => {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -377,12 +545,38 @@ export default function ChatPage() {
 
     const handleSubmit = (e: FormEvent | React.KeyboardEvent) => {
         e.preventDefault();
-        if ((input.trim() || pendingImage) && !isLoading) {
-            const text = input.trim() || (pendingImage ? 'What do you see in this screenshot?' : '');
-            const images = pendingImage ? [pendingImage] : undefined;
-            sendMessage(text, images);
+        const hasImages = pendingImage || pendingFiles.some((f) => f.preview);
+        const hasTextFiles = pendingFiles.some((f) => !f.preview);
+        const hasContent = input.trim() || hasImages || hasTextFiles;
+
+        if (hasContent && !isLoading) {
+            // Collect all image data URLs
+            const images: string[] = [];
+            if (pendingImage) images.push(pendingImage);
+            pendingFiles
+                .filter((f) => f.preview)
+                .forEach((f) => images.push(f.data));
+
+            // Build text content: user input + any attached text files
+            let text = input.trim();
+            const textAttachments = pendingFiles.filter((f) => !f.preview);
+            if (textAttachments.length > 0) {
+                const fileContext = textAttachments
+                    .map((f) => `<file name="${f.name}">\n${f.data}\n</file>`)
+                    .join('\n\n');
+                text = text
+                    ? `${text}\n\n${fileContext}`
+                    : `Here are the attached files:\n\n${fileContext}`;
+            }
+
+            if (!text && hasImages) {
+                text = 'What do you see in this image?';
+            }
+
+            sendMessage(text, images.length > 0 ? images : undefined);
             setInput('');
             clearPendingImage();
+            setPendingFiles([]);
             if (textareaRef.current) {
                 textareaRef.current.style.height = 'auto';
             }
@@ -427,7 +621,31 @@ export default function ChatPage() {
             )}
 
             {/* ── Chat column ────────────────────────────────────────────── */}
-            <div className="flex flex-col flex-1 min-w-0 h-screen">
+            <div
+                className="flex flex-col flex-1 min-w-0 h-screen relative"
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+            >
+
+            {/* ── Drag overlay ───────────────────────────────────────────── */}
+            <AnimatePresence>
+                {isDragging && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute inset-0 z-50 flex items-center justify-center bg-[var(--bg)]/80 backdrop-blur-sm border-2 border-dashed border-[var(--accent)] rounded-2xl"
+                    >
+                        <div className="flex flex-col items-center gap-2 text-[var(--accent)]">
+                            <Monitor size={32} />
+                            <span className="text-sm font-medium">Drop files here</span>
+                            <span className="text-xs text-[var(--text-muted)]">Images, code, text files</span>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* ── Title bar ──────────────────────────────────────────────── */}
             {isDesktop ? (
@@ -446,6 +664,16 @@ export default function ChatPage() {
                     onModeChange={setMode}
                     onClear={clearMessages}
                     canClear={messages.length > 0}
+                    tokenBar={
+                        <TokenUsageBar
+                            totalTokens={sessionTokens.totalTokens}
+                            promptTokens={sessionTokens.promptTokens}
+                            completionTokens={sessionTokens.completionTokens}
+                            model={sessionTokens.model}
+                            turnCount={sessionTokens.turnCount}
+                            contextLimit={activeModelContextLimit}
+                        />
+                    }
                 />
             )}
 
@@ -479,8 +707,6 @@ export default function ChatPage() {
                         className="flex-1 min-h-0"
                     >
                         <VoiceVisual
-                            language={language}
-                            onLanguageChange={setLanguage}
                             messages={messages as any[]}
                             isStreaming={isLoading}
                             onSend={sendMessage}
@@ -528,12 +754,32 @@ export default function ChatPage() {
                             <form
                                 onSubmit={handleSubmit}
                                 className={cn(
-                                    'rounded-2xl p-3 sm:p-4 shadow-2xl',
+                                    'relative rounded-2xl p-3 sm:p-4 shadow-2xl',
                                     isDesktop
                                         ? 'bg-[var(--overlay-bg)] border border-[var(--overlay-border)] backdrop-blur-xl'
                                         : 'glass-strong',
                                 )}
                             >
+                                {/* ── Slash command menu ───────────────────── */}
+                                {slashOpen && filteredSlashCommands.length > 0 && (
+                                    <SlashCommandMenu
+                                        filter={slashFilter}
+                                        commands={filteredSlashCommands}
+                                        onSelect={handleSlashSelect}
+                                        onClose={() => setSlashOpen(false)}
+                                        selectedIndex={slashIndex}
+                                    />
+                                )}
+
+                                {/* ── Slash toast (ephemeral info) ─────────── */}
+                                {slashToast && (
+                                    <div className="absolute bottom-full left-0 right-0 mb-2 flex justify-center pointer-events-none z-50">
+                                        <div className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-xs text-[var(--text-secondary)] shadow-lg animate-in fade-in slide-in-from-bottom-2">
+                                            {slashToast}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* ── Image preview ────────────────────────── */}
                                 {pendingImage && (
                                     <div className="relative mb-2 inline-block">
@@ -555,18 +801,87 @@ export default function ChatPage() {
                                     </div>
                                 )}
 
+                                {/* ── Dropped file previews ────────────────── */}
+                                {pendingFiles.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mb-2">
+                                        {pendingFiles.map((f) =>
+                                            f.preview ? (
+                                                <div key={f.id} className="relative inline-block">
+                                                    <img
+                                                        src={f.preview}
+                                                        alt={f.name}
+                                                        className="max-h-24 w-auto rounded-lg border border-[var(--border)] object-contain"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removePendingFile(f.id)}
+                                                        className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--dangerous)] text-white shadow-md hover:brightness-110 transition"
+                                                    >
+                                                        <X size={11} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div
+                                                    key={f.id}
+                                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs text-[var(--text-secondary)]"
+                                                >
+                                                    <span className="max-w-[120px] truncate">{f.name}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removePendingFile(f.id)}
+                                                        className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-[var(--dangerous)]/20 text-[var(--text-muted)] hover:text-[var(--dangerous)] transition"
+                                                    >
+                                                        <X size={10} />
+                                                    </button>
+                                                </div>
+                                            ),
+                                        )}
+                                    </div>
+                                )}
+
                                 <textarea
                                     ref={textareaRef}
                                     value={input}
-                                    onChange={(e) => setInput(e.target.value)}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setInput(val);
+                                        // Open slash menu when input starts with / and has no spaces yet
+                                        if (val.startsWith('/') && !val.includes(' ')) {
+                                            setSlashOpen(true);
+                                        } else {
+                                            setSlashOpen(false);
+                                        }
+                                    }}
                                     onPaste={handlePaste}
                                     onKeyDown={(e) => {
+                                        if (slashOpen && filteredSlashCommands.length > 0) {
+                                            if (e.key === 'ArrowDown') {
+                                                e.preventDefault();
+                                                setSlashIndex((i) => Math.min(i + 1, filteredSlashCommands.length - 1));
+                                                return;
+                                            }
+                                            if (e.key === 'ArrowUp') {
+                                                e.preventDefault();
+                                                setSlashIndex((i) => Math.max(i - 1, 0));
+                                                return;
+                                            }
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleSlashSelect(filteredSlashCommands[slashIndex]);
+                                                return;
+                                            }
+                                            if (e.key === 'Escape') {
+                                                e.preventDefault();
+                                                setSlashOpen(false);
+                                                return;
+                                            }
+                                        }
                                         if (e.key === 'Enter' && !e.shiftKey) {
                                             e.preventDefault();
                                             handleSubmit(e);
                                         }
                                     }}
-                                    placeholder={pendingImage ? 'Ask about this screenshot...' : 'Ask Aurelius anything...'}
+                                    placeholder={pendingImage ? 'Ask about this screenshot...' : 'Type / for commands...'}
                                     disabled={isLoading}
                                     rows={1}
                                     className="w-full bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none focus:outline-none text-sm sm:text-base leading-relaxed"
@@ -626,7 +941,7 @@ export default function ChatPage() {
                                             <Button
                                                 type="submit"
                                                 size="sm"
-                                                disabled={!input.trim() && !pendingImage}
+                                                disabled={!input.trim() && !pendingImage && pendingFiles.length === 0}
                                                 className="gap-1"
                                             >
                                                 <Send size={13} /> Send
