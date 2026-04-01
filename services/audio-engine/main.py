@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,9 +12,15 @@ from typing import Optional
 from engine import engine
 import uvicorn
 
-app = FastAPI(title="AURELIUS Audio Engine")
 
-# CORS for frontend
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    engine.initialize()
+    yield
+
+
+app = FastAPI(title="AURELIUS Audio Engine", lifespan=lifespan)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,20 +35,6 @@ class TTSRequest(BaseModel):
     voice: Optional[str] = None
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize audio engine on startup."""
-    engine.initialize()
-
-
-@app.get("/")
-async def root():
-    return {
-        "status": "running",
-        "engine_ready": engine.is_ready,
-    }
-
-
 @app.get("/health")
 async def health():
     return {"status": "healthy", "ready": engine.is_ready}
@@ -48,7 +42,6 @@ async def health():
 
 @app.post("/api/tts")
 async def text_to_speech(request: TTSRequest):
-    """Convert text to speech and return audio."""
     audio_bytes = await engine.synthesize_speech(request.text, request.voice)
     if not audio_bytes:
         return Response(content="TTS failed", status_code=500)
@@ -61,14 +54,11 @@ async def text_to_speech(request: TTSRequest):
 
 @app.websocket("/ws/audio")
 async def audio_stream(websocket: WebSocket):
-    """WebSocket endpoint for real-time audio streaming."""
     await websocket.accept()
     try:
         await engine.process_audio_stream(websocket)
     except WebSocketDisconnect:
-        print("Client disconnected")
-    except Exception as e:
-        print(f"WebSocket error: {e}")
+        pass
 
 
 if __name__ == "__main__":

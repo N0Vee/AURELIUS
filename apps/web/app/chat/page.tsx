@@ -9,7 +9,7 @@ import { ChatWindow } from './components/ChatWindow';
 import { SessionSidebar } from './components/SessionSidebar';
 import { VoiceVisual } from './components/VoiceVisual';
 import { Button } from '@/components/ui';
-import { Send, Square, Trash2, MessageSquare, Mic, Minus, Monitor, ClipboardPaste, X } from 'lucide-react';
+import { Send, Square, Trash2, MessageSquare, Mic, Minus, Monitor, ClipboardPaste, X, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useIsDesktop } from '@/components/layout/DesktopContext';
@@ -22,10 +22,18 @@ function OverlayTitleBar({
     mode,
     onModeChange,
     onHide,
+    sessions,
+    activeSessionId,
+    onSelectSession,
+    onCreateSession,
 }: {
     mode: Mode;
     onModeChange: (m: Mode) => void;
     onHide: () => void;
+    sessions: any[];
+    activeSessionId: string | null;
+    onSelectSession: (id: string) => void;
+    onCreateSession: () => void;
 }) {
     const onDrag = useTauriDrag();
 
@@ -50,6 +58,28 @@ function OverlayTitleBar({
                 <span className="text-[11px] font-bold tracking-[0.18em] text-[var(--text-primary)]">
                     AURELIUS
                 </span>
+            </div>
+
+            {/* Session selector — not draggable */}
+            <div className="flex items-center gap-1 pointer-events-auto">
+                <select
+                    value={activeSessionId || ''}
+                    onChange={(e) => onSelectSession(e.target.value)}
+                    className="text-[10px] bg-[var(--surface)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[var(--text-secondary)] cursor-pointer max-w-[120px]"
+                >
+                    {sessions.map((s: any) => (
+                        <option key={s.id} value={s.id}>
+                            {s.title || 'New Chat'}
+                        </option>
+                    ))}
+                </select>
+                <button
+                    onClick={onCreateSession}
+                    title="New session"
+                    className="flex items-center justify-center h-5 w-5 rounded text-[var(--text-muted)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)] transition-all"
+                >
+                    <Plus size={10} />
+                </button>
             </div>
 
             {/* Mode pill + hide — not draggable */}
@@ -98,10 +128,12 @@ function OverlayTitleBar({
 // ── Web title-bar ─────────────────────────────────────────────────────────────
 function WebTitleBar({
     mode,
+    onModeChange,
     onClear,
     canClear,
 }: {
     mode: Mode;
+    onModeChange: (m: Mode) => void;
     onClear: () => void;
     canClear: boolean;
 }) {
@@ -125,9 +157,38 @@ function WebTitleBar({
             </div>
 
             <header className="flex items-center justify-between px-3 py-2 sm:px-6 sm:py-4 border-b border-[var(--border)] shrink-0">
-                <h1 className="text-sm sm:text-lg font-semibold text-[var(--text-primary)]">
-                    {mode === 'chat' ? 'Chat Mode' : 'Voice Mode'}
-                </h1>
+                <div className="flex items-center gap-3">
+                    <h1 className="text-sm sm:text-lg font-semibold text-[var(--text-primary)]">
+                        {mode === 'chat' ? 'Chat Mode' : 'Voice Mode'}
+                    </h1>
+                    {/* Chat / Voice toggle */}
+                    <div className="flex items-center bg-[var(--surface)] border border-[var(--border)] rounded-full p-0.5">
+                        <button
+                            onClick={() => onModeChange('chat')}
+                            className={cn(
+                                'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all',
+                                mode === 'chat'
+                                    ? 'bg-[var(--accent)] text-white shadow-sm'
+                                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]',
+                            )}
+                        >
+                            <MessageSquare size={11} />
+                            Chat
+                        </button>
+                        <button
+                            onClick={() => onModeChange('voice')}
+                            className={cn(
+                                'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all',
+                                mode === 'voice'
+                                    ? 'bg-[var(--accent)] text-white shadow-sm'
+                                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]',
+                            )}
+                        >
+                            <Mic size={11} />
+                            Voice
+                        </button>
+                    </div>
+                </div>
                 <Button
                     variant="ghost"
                     size="sm"
@@ -162,14 +223,6 @@ export default function ChatPage() {
 
     const activeSession = sessions.find((s) => s.id === activeSessionId);
 
-    // Sync voice mode session with chat session
-    const { setSessionId: setVoiceSessionId } = useVoice();
-    useEffect(() => {
-        if (activeSessionId) {
-            setVoiceSessionId(activeSessionId);
-        }
-    }, [activeSessionId, setVoiceSessionId]);
-
     const {
         messages,
         isLoading,
@@ -183,6 +236,72 @@ export default function ChatPage() {
         sessionId:    activeSessionId,
         sessionTitle: activeSession?.title,
     });
+
+    // Sync voice mode session with chat session
+    const { setSessionId: setVoiceSessionId, speakText } = useVoice();
+    useEffect(() => {
+        if (activeSessionId) {
+            setVoiceSessionId(activeSessionId);
+        }
+    }, [activeSessionId, setVoiceSessionId]);
+
+    // TTS: speak responses and tool events in voice mode
+    const lastSpokenId = useRef<string>('');
+    const spokeConfirmIds = useRef<Set<string>>(new Set());
+    useEffect(() => {
+        if (mode !== 'voice') return;
+
+        // Check for new tool_confirm pending messages
+        for (const msg of messages) {
+            if (msg.role === 'tool_confirm' && msg.status === 'pending' && !spokeConfirmIds.current.has(msg.id)) {
+                spokeConfirmIds.current.add(msg.id);
+                const name = (msg as any).displayName || (msg as any).toolName;
+                console.log('[TTS] Speaking tool confirm:', name);
+                speakText(`${name}. Should I proceed?`);
+                return;
+            }
+        }
+
+        const last = messages[messages.length - 1];
+        if (!last || last.id === lastSpokenId.current) return;
+
+        // Tool auto-executed
+        if (last.role === 'tool_auto') {
+            lastSpokenId.current = last.id;
+            const result = (last as any).result;
+            console.log('[TTS] Speaking tool result:', result?.slice(0, 50));
+            if (result && result.length < 200) speakText(result);
+            return;
+        }
+
+        // Tool approved/rejected
+        if (last.role === 'tool_confirm' && (last.status === 'approved' || last.status === 'rejected')) {
+            lastSpokenId.current = last.id;
+            console.log('[TTS] Speaking tool status:', last.status);
+            speakText(last.status === 'approved' ? 'Approved.' : 'Rejected.');
+            return;
+        }
+
+        // Assistant response
+        if (last.role === 'assistant') {
+            if ('isStreaming' in last && (last as any).isStreaming) return;
+            lastSpokenId.current = last.id;
+            if (!last.content) return;
+            const tts = last.content
+                .replace(/```[\s\S]*?```/g, 'Check the app for details.')
+                .replace(/`([^`]+)`/g, '$1')
+                .replace(/\*\*([^*]+)\*\*/g, '$1')
+                .replace(/\*([^*]+)\*/g, '$1')
+                .replace(/#{1,6}\s/g, '')
+                .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+                .replace(/^\s*[-*]\s/gm, '')
+                .trim();
+            console.log('[TTS] Speaking assistant response:', tts?.slice(0, 50));
+            if (tts) speakText(tts);
+        }
+    }, [messages, mode, speakText]);
+
+    const pendingConfirmId = messages.find(m => m.role === 'tool_confirm' && m.status === 'pending')?.id ?? null;
     const { pendingImage, captureScreen, pasteFromClipboard, clearPendingImage } = useScreenCapture();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -260,10 +379,15 @@ export default function ChatPage() {
                     mode={mode}
                     onModeChange={setMode}
                     onHide={hideWindow}
+                    sessions={sessions}
+                    activeSessionId={activeSessionId}
+                    onSelectSession={setActiveSessionId}
+                    onCreateSession={createSession}
                 />
             ) : (
                 <WebTitleBar
                     mode={mode}
+                    onModeChange={setMode}
                     onClear={clearMessages}
                     canClear={messages.length > 0}
                 />
@@ -296,7 +420,16 @@ export default function ChatPage() {
                         transition={{ duration: 0.2 }}
                         className="flex-1 min-h-0"
                     >
-                        <VoiceVisual language={language} onLanguageChange={setLanguage} />
+                        <VoiceVisual
+                            language={language}
+                            onLanguageChange={setLanguage}
+                            messages={messages}
+                            isStreaming={isLoading}
+                            onSend={sendMessage}
+                            onApprove={approveToolCall}
+                            onReject={rejectToolCall}
+                            pendingConfirmId={pendingConfirmId}
+                        />
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -437,37 +570,6 @@ export default function ChatPage() {
                 )}
             </AnimatePresence>
 
-            {/* ── Mode toggle (web only — overlay uses title bar toggle) ──── */}
-            {!isDesktop && (
-                <div className="fixed bottom-3 sm:bottom-6 left-0 sm:left-[29rem] right-0 px-3 sm:px-6 pointer-events-none">
-                    <div className="flex justify-center pointer-events-auto">
-                        <div className="flex items-center bg-[var(--surface)] border border-[var(--border)] rounded-full p-1 shadow-xl">
-                            <button
-                                onClick={() => setMode('chat')}
-                                className={cn(
-                                    'flex items-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium transition-all',
-                                    mode === 'chat'
-                                        ? 'bg-[var(--accent)] text-white shadow-sm'
-                                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]',
-                                )}
-                            >
-                                <MessageSquare size={16} /> Chat
-                            </button>
-                            <button
-                                onClick={() => setMode('voice')}
-                                className={cn(
-                                    'flex items-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-5 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium transition-all',
-                                    mode === 'voice'
-                                        ? 'bg-[var(--accent)] text-white shadow-sm'
-                                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]',
-                                )}
-                            >
-                                <Mic size={16} /> Voice
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
             </div>{/* end chat column */}
         </div>
     );

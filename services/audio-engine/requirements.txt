@@ -4,8 +4,9 @@ websockets==12.0
 python-multipart==0.0.9
 torch>=2.1.0
 torchaudio>=2.1.0
-moonshine-voice>=0.0.50
-fireredvad>=0.0.2
+transformers>=4.45.0
+accelerate>=0.33.0
+safetensors>=0.4.0
 scipy>=1.12.0
 numpy>=1.26.0
 colorama>=0.4.6

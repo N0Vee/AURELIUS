@@ -86,9 +86,11 @@ async function* agentLoop(
             content: `[VOICE MODE ACTIVE]
 You are responding via voice. Rules:
 - Keep responses under 2-3 sentences when possible
-- For complex tasks (code, long lists, detailed analysis), do the work but say "I've done that, check the app for details" and describe the result briefly
-- When requesting tool confirmation, be brief: "Should I open [file]?" not verbose
-- After tool execution, summarize in 1 sentence
+- Do NOT generate planning text like "Let me search" or "I'll help you" — just call the tool directly
+- After a tool succeeds, respond with ONLY the result in 1 sentence
+- If a tool fails, explain the error briefly, then try a different approach
+- For complex tasks (code, long lists, detailed analysis), do the work but say "I've done that, check the app for details"
+- When requesting tool confirmation, be brief: "Should I open [file]?"
 - Never output markdown formatting, code blocks, or special characters — speak naturally
 - Match the user's language`,
             timestamp: Date.now(),
@@ -175,6 +177,9 @@ You are responding via voice. Rules:
         // ── Stream one LLM turn (with retry if stream dies before any content) ──
         let streamAttempt = 0;
         let streamDone    = false;
+        // In voice mode, track if this iteration had a tool call
+        // so we don't stream planning text
+        let hasToolCallThisIteration = false;
 
         while (!streamDone) {
             let hasYieldedContent = false;
@@ -184,9 +189,17 @@ You are responding via voice. Rules:
                         hasYieldedContent = true;
                         lastIterationYieldedText = true;
                         textContent += event.content;
-                        yield `event: chunk\ndata: ${JSON.stringify({ content: event.content })}\n\n`;
+                        // In voice mode: don't stream text if there's a tool call in this iteration
+                        if (!voiceMode || !hasToolCallThisIteration) {
+                            yield `event: chunk\ndata: ${JSON.stringify({ content: event.content })}\n\n`;
+                        }
                     } else if (event.type === 'tool_call') {
-                        if (!toolCallEvent) toolCallEvent = event;
+                        if (!toolCallEvent) {
+                            toolCallEvent = event;
+                            hasToolCallThisIteration = true;
+                            // In voice mode: discard planning text when tool call detected
+                            if (voiceMode) textContent = '';
+                        }
                     } else if (event.type === 'usage') {
                         yield `event: usage\ndata: ${JSON.stringify({
                             promptTokens:     event.promptTokens,
@@ -403,6 +416,14 @@ You are responding via voice. Rules:
             tool_call_id: toolCallEvent.id,
             timestamp: Date.now(),
         });
+
+        // In voice mode: after a successful tool call, force a text response
+        // so the user hears what happened before the LLM tries another tool.
+        // For failures, allow the loop to continue so the LLM can retry.
+        if (voiceMode && !toolFailed) {
+            console.log(`[AgentLoop] Voice mode: tool succeeded, forcing text response`);
+            break;
+        }
     }
 
     // ── Safety net: if the loop ended after a tool call (hit iteration cap
