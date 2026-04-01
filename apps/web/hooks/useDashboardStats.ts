@@ -38,14 +38,14 @@ export function useDashboardStats(): DashboardStats {
 
     const safeUsage = allUsage ?? [];
 
-    const totalTokens      = safeUsage.reduce((s, u) => s + u.totalTokens,      0);
-    const promptTokens     = safeUsage.reduce((s, u) => s + u.promptTokens,     0);
-    const completionTokens = safeUsage.reduce((s, u) => s + u.completionTokens, 0);
+    const totalTokens      = safeUsage.reduce((s, u) => s + (u.totalTokens      ?? 0), 0);
+    const promptTokens     = safeUsage.reduce((s, u) => s + (u.promptTokens     ?? 0), 0);
+    const completionTokens = safeUsage.reduce((s, u) => s + (u.completionTokens ?? 0), 0);
 
     const ts = todayStart();
     const tokensToday = safeUsage
-        .filter(u => u.updatedAt >= ts)
-        .reduce((s, u) => s + u.totalTokens, 0);
+        .filter(u => (u.updatedAt ?? 0) >= ts)
+        .reduce((s, u) => s + (u.totalTokens ?? 0), 0);
 
     const usageMap = new Map(safeUsage.map(u => [u.sessionId, u]));
     const recentSessions: SessionWithUsage[] = (rawSessions ?? []).map(s => ({

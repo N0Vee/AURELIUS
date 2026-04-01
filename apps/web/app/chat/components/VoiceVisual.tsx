@@ -4,7 +4,8 @@ import { useVoice } from '@/components/VoiceProvider';
 import { Mic, MicOff, Languages, Check, X, AlertTriangle, Zap, Loader2, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { cn, isToolPart } from '@/lib/utils';
+import { getToolName } from 'ai';
 
 interface VoiceVisualProps {
     language: 'th' | 'en';
@@ -27,9 +28,21 @@ const LEVEL_STYLES = {
 
 // ── Subcomponents ─────────────────────────────────────────────────────────────
 
+// Helper: extract text content from a v2 UIMessage (parts-based) or v1 message (.content string)
+function getMessageText(msg: any): string {
+    if (msg.parts?.length) {
+        return msg.parts
+            .filter((p: any) => p.type === 'text')
+            .map((p: any) => p.text)
+            .join('\n');
+    }
+    return msg.content ?? '';
+}
+
 function ToolConfirmBubble({ msg, onApprove, onReject }: { msg: any; onApprove: () => void; onReject: () => void }) {
     const cfg = (LEVEL_STYLES as any)[msg.permissionLevel || 'DANGEROUS'] || LEVEL_STYLES.DANGEROUS;
     const { Icon } = cfg;
+    const displayText = getMessageText(msg);
 
     return (
         <div className="flex justify-start">
@@ -43,7 +56,7 @@ function ToolConfirmBubble({ msg, onApprove, onReject }: { msg: any; onApprove: 
                         {msg.permissionLevel}
                     </span>
                 </div>
-                {msg.content && <p className="text-xs text-[var(--text-secondary)] mt-2">{msg.content}</p>}
+                {displayText && <p className="text-xs text-[var(--text-secondary)] mt-2">{displayText}</p>}
 
                 {msg.status === 'pending' && (
                     <div className="flex gap-2 mt-2 pt-2 border-t border-[var(--border)]">
@@ -73,36 +86,83 @@ function ToolConfirmBubble({ msg, onApprove, onReject }: { msg: any; onApprove: 
 }
 
 function MessageBubble({ msg, isStreaming, isLast, onApprove, onReject }: { msg: any; isStreaming: boolean; isLast: boolean; onApprove: (id: string) => void; onReject: (id: string) => void }) {
+    const text = getMessageText(msg);
+
     if (msg.role === 'user') {
         return (
             <div className="flex justify-end">
-                <div className="max-w-[80%] rounded-2xl rounded-br-md px-3 py-2 bg-[var(--accent)] text-white text-sm">{msg.content}</div>
+                <div className="max-w-[80%] rounded-2xl rounded-br-md px-3 py-2 bg-[var(--accent)] text-white text-sm">{text}</div>
             </div>
         );
     }
 
     if (msg.role === 'assistant') {
+        // Extract tool parts from v2 UIMessage
+        const toolParts = (msg.parts ?? []).filter((p: any) => isToolPart(p));
+
         return (
-            <div className="flex justify-start">
-                <div className="max-w-[80%] rounded-2xl rounded-bl-md px-3 py-2 bg-[var(--surface)] text-[var(--text-primary)] text-sm">
-                    {msg.content || (isStreaming && isLast) ? (
-                        <>
-                            {msg.content}
-                            {isStreaming && isLast && !msg.content && (
+            <div className="flex flex-col gap-2 justify-start">
+                {/* Tool invocation summaries */}
+                {toolParts.map((part: any) => {
+                    const name = getToolName(part).replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+                    const state = part.state;
+
+                    if (state === 'output-available' || state === 'output-error') {
+                        return (
+                            <div key={part.toolCallId} className="flex justify-start">
+                                <div className="max-w-[90%] rounded-lg px-3 py-2 border bg-[var(--safe-glow)] border-[var(--safe)]/30">
+                                    <div className="flex items-center gap-2 text-xs">
+                                        <Check size={12} className="text-[var(--safe)]" />
+                                        <span className="text-[var(--text-secondary)]">{name}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    if (state === 'input-available') {
+                        // Pending confirmation — rendered via pendingConfirmId in parent
+                        return null;
+                    }
+
+                    if (state === 'input-streaming') {
+                        return (
+                            <div key={part.toolCallId} className="flex justify-start">
+                                <div className="max-w-[90%] rounded-lg px-3 py-2 border bg-[var(--surface)] border-[var(--border)]">
+                                    <div className="flex items-center gap-2 text-xs">
+                                        <Loader2 size={12} className="animate-spin text-[var(--accent)]" />
+                                        <span className="text-[var(--text-secondary)]">{name}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    return null;
+                })}
+
+                {/* Text content */}
+                {(text || (isStreaming && isLast)) && (
+                    <div className="flex justify-start">
+                        <div className="max-w-[80%] rounded-2xl rounded-bl-md px-3 py-2 bg-[var(--surface)] text-[var(--text-primary)] text-sm">
+                            {text}
+                            {isStreaming && isLast && !text && (
                                 <span className="inline-flex gap-1 ml-1">
                                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)] animate-bounce" style={{ animationDelay: '0ms' }} />
                                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)] animate-bounce" style={{ animationDelay: '150ms' }} />
                                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)] animate-bounce" style={{ animationDelay: '300ms' }} />
                                 </span>
                             )}
-                        </>
-                    ) : null}
-                </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
 
+    // v1 legacy roles — kept for backwards compatibility with old IndexedDB messages
     if (msg.role === 'tool_auto') {
+        const displayText = getMessageText(msg);
         return (
             <div className="flex justify-start">
                 <div className="max-w-[90%] rounded-lg px-3 py-2 border bg-[var(--safe-glow)] border-[var(--safe)]/30">
@@ -110,7 +170,7 @@ function MessageBubble({ msg, isStreaming, isLast, onApprove, onReject }: { msg:
                         <Check size={12} className="text-[var(--safe)]" />
                         <span className="text-[var(--text-secondary)]">{msg.displayName || msg.toolName}</span>
                     </div>
-                    {msg.content && <p className="text-xs text-[var(--text-muted)] mt-1 truncate max-w-[250px]">{msg.content}</p>}
+                    {displayText && <p className="text-xs text-[var(--text-muted)] mt-1 truncate max-w-[250px]">{displayText}</p>}
                 </div>
             </div>
         );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import type { ChatSession } from '@/lib/db';
@@ -76,6 +76,10 @@ export function useChatSessions(): UseChatSessionsReturn {
         readStoredSessionId,
     );
 
+    // Keep a ref so callbacks always see the latest value
+    const activeSessionIdRef = useRef(activeSessionId);
+    useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
+
     const setActiveSessionId = useCallback((id: string) => {
         setActiveSessionIdState(id);
         writeStoredSessionId(id);
@@ -105,14 +109,16 @@ export function useChatSessions(): UseChatSessionsReturn {
 
     const deleteSession = useCallback(
         async (id: string): Promise<void> => {
-            // Remove all messages belonging to this session first
-            await db.messages.where('sessionId').equals(id).delete();
-            await db.sessionUsage.where('sessionId').equals(id).delete();
-            await db.sessions.delete(id);
+            // Atomic cascade delete — all related data removed in one transaction
+            await db.transaction('rw', db.messages, db.sessionUsage, db.sessions, async () => {
+                await db.messages.where('sessionId').equals(id).delete();
+                await db.sessionUsage.where('sessionId').equals(id).delete();
+                await db.sessions.delete(id);
+            });
 
-            // If we just deleted the active session, switch to the next best one
-            if (activeSessionId === id) {
-                // rawSessions may lag one tick — query directly for accuracy
+            // If we just deleted the active session, switch to the next best one.
+            // Read from ref to avoid stale closure.
+            if (activeSessionIdRef.current === id) {
                 const remaining = await db.sessions
                     .orderBy('updatedAt')
                     .reverse()
@@ -126,7 +132,7 @@ export function useChatSessions(): UseChatSessionsReturn {
                 }
             }
         },
-        [activeSessionId, setActiveSessionId, createSession],
+        [setActiveSessionId, createSession],
     );
 
     const renameSession = useCallback(

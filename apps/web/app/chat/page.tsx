@@ -11,7 +11,8 @@ import { VoiceVisual } from './components/VoiceVisual';
 import { Button } from '@/components/ui';
 import { Send, Square, Trash2, MessageSquare, Mic, Minus, Monitor, ClipboardPaste, X, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { cn, isToolPart } from '@/lib/utils';
+import { getToolName } from 'ai';
 import { useIsDesktop } from '@/components/layout/DesktopContext';
 import { useVoice } from '@/components/VoiceProvider';
 import Image from 'next/image';
@@ -225,13 +226,15 @@ export default function ChatPage() {
 
     const {
         messages,
+        status,
         isLoading,
+        error: chatError,
         sendMessage,
-        retryLastMessage,
-        stopGeneration,
+        regenerate,
+        stop,
         clearMessages,
-        approveToolCall,
-        rejectToolCall,
+        executeAndApprove,
+        rejectTool,
     } = useChat({
         sessionId:    activeSessionId,
         sessionTitle: activeSession?.title,
@@ -245,63 +248,116 @@ export default function ChatPage() {
         }
     }, [activeSessionId, setVoiceSessionId]);
 
-    // TTS: speak responses and tool events in voice mode
+    // TTS: speak responses and tool events in voice mode (v2 parts-based)
     const lastSpokenId = useRef<string>('');
-    const spokeConfirmIds = useRef<Set<string>>(new Set());
+    const spokeToolCallIds = useRef<Set<string>>(new Set());
+
+    // When switching TO voice mode, mark the current last message as already
+    // spoken so we don't re-read messages that were shown in chat mode.
+    useEffect(() => {
+        if (mode === 'voice') {
+            const last = messages[messages.length - 1];
+            if (last) lastSpokenId.current = last.id;
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mode]);
+
     useEffect(() => {
         if (mode !== 'voice') return;
 
-        // Check for new tool_confirm pending messages
-        for (const msg of messages) {
-            if (msg.role === 'tool_confirm' && msg.status === 'pending' && !spokeConfirmIds.current.has(msg.id)) {
-                spokeConfirmIds.current.add(msg.id);
-                const name = (msg as any).displayName || (msg as any).toolName;
-                console.log('[TTS] Speaking tool confirm:', name);
-                speakText(`${name}. Should I proceed?`);
-                return;
+        // Scan for pending tool invocations (needs approval) in the latest assistant message
+        const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
+        if (lastAssistant?.parts) {
+            for (const part of lastAssistant.parts) {
+                if (
+                    isToolPart(part) &&
+                    (part.state === 'input-available') &&
+                    !spokeToolCallIds.current.has(part.toolCallId)
+                ) {
+                    spokeToolCallIds.current.add(part.toolCallId);
+                    const name = getToolName(part).replace(/_/g, ' ');
+                    speakText(`${name}. Should I proceed?`);
+                    return;
+                }
             }
         }
 
         const last = messages[messages.length - 1];
         if (!last || last.id === lastSpokenId.current) return;
 
-        // Tool auto-executed
-        if (last.role === 'tool_auto') {
+        // Only speak completed assistant messages (not while still streaming)
+        if (last.role === 'assistant' && status === 'ready') {
             lastSpokenId.current = last.id;
-            const result = (last as any).result;
-            console.log('[TTS] Speaking tool result:', result?.slice(0, 50));
-            if (result && result.length < 200) speakText(result);
-            return;
-        }
 
-        // Tool approved/rejected
-        if (last.role === 'tool_confirm' && (last.status === 'approved' || last.status === 'rejected')) {
-            lastSpokenId.current = last.id;
-            console.log('[TTS] Speaking tool status:', last.status);
-            speakText(last.status === 'approved' ? 'Approved.' : 'Rejected.');
-            return;
-        }
+            // Gather text from parts (guard for v1 messages without parts)
+            const fullText = (last.parts ?? [])
+                .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+                .map((p) => p.text)
+                .join('\n');
+            if (!fullText) return;
 
-        // Assistant response
-        if (last.role === 'assistant') {
-            if ('isStreaming' in last && (last as any).isStreaming) return;
-            lastSpokenId.current = last.id;
-            if (!last.content) return;
-            const tts = last.content
-                .replace(/```[\s\S]*?```/g, 'Check the app for details.')
-                .replace(/`([^`]+)`/g, '$1')
-                .replace(/\*\*([^*]+)\*\*/g, '$1')
-                .replace(/\*([^*]+)\*/g, '$1')
-                .replace(/#{1,6}\s/g, '')
-                .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-                .replace(/^\s*[-*]\s/gm, '')
+            // ── Smart TTS: summarise long responses ───────────────
+            const codeBlockCount = (fullText.match(/```/g) || []).length / 2;
+            const listItemCount = (fullText.match(/^\s*[-*\d.]+\s/gm) || []).length;
+            const tableCount = (fullText.match(/^\|/gm) || []).length;
+            const hasHeavyContent = codeBlockCount >= 1 || listItemCount > 5 || tableCount > 2;
+
+            // Strip markdown to plain speech
+            const plain = fullText
+                .replace(/```[\s\S]*?```/g, '')       // remove code blocks
+                .replace(/`([^`]+)`/g, '$1')           // inline code → text
+                .replace(/\*\*([^*]+)\*\*/g, '$1')     // bold
+                .replace(/\*([^*]+)\*/g, '$1')          // italic
+                .replace(/#{1,6}\s/g, '')               // headings
+                .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
+                .replace(/^\s*[-*]\s/gm, '')            // list bullets
+                .replace(/^\|.*\|$/gm, '')              // table rows
+                .replace(/\n{2,}/g, '\n')               // collapse blank lines
                 .trim();
-            console.log('[TTS] Speaking assistant response:', tts?.slice(0, 50));
+
+            const MAX_SPEAK_LEN = 250;
+
+            let tts: string;
+
+            if (!plain && hasHeavyContent) {
+                // Response is mostly code/tables
+                tts = "I've put the details on screen. Take a look.";
+            } else if (plain.length <= MAX_SPEAK_LEN && !hasHeavyContent) {
+                // Short enough to read fully
+                tts = plain;
+            } else {
+                // Extract first meaningful sentence(s) up to limit
+                const sentences = plain.match(/[^.!?\n]+[.!?]?/g) || [plain];
+                let summary = '';
+                for (const s of sentences) {
+                    if ((summary + s).length > MAX_SPEAK_LEN) break;
+                    summary += s;
+                }
+                summary = summary.trim();
+                if (!summary) summary = plain.slice(0, MAX_SPEAK_LEN);
+
+                tts = hasHeavyContent
+                    ? `${summary}. I've put the full details on screen.`
+                    : `${summary}. There's more on screen if you need it.`;
+            }
+
             if (tts) speakText(tts);
         }
-    }, [messages, mode, speakText]);
+    }, [messages, mode, status, speakText]);
 
-    const pendingConfirmId = (messages.find(m => m.role === 'tool_confirm' && m.status === 'pending') as any)?.pendingId ?? null;
+    // Find pending tool call for voice mode approval/reject
+    const pendingToolCall = (() => {
+        const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
+        if (!lastAssistant?.parts) return null;
+        for (const part of lastAssistant.parts) {
+            if (isToolPart(part) && part.state === 'input-available') {
+                return { ...part, toolName: getToolName(part) };
+            }
+        }
+        return null;
+    })();
+    const pendingConfirmId = pendingToolCall?.toolCallId ?? null;
+
     const { pendingImage, captureScreen, pasteFromClipboard, clearPendingImage } = useScreenCapture();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -406,9 +462,11 @@ export default function ChatPage() {
                     >
                         <ChatWindow
                             messages={messages}
-                            onApproveToolCall={approveToolCall}
-                            onRejectToolCall={rejectToolCall}
-                            onRetry={retryLastMessage}
+                            status={status}
+                            error={chatError}
+                            onApprove={executeAndApprove}
+                            onReject={(toolCallId, toolName) => rejectTool(toolCallId, toolName)}
+                            onRetry={regenerate}
                         />
                     </motion.div>
                 ) : (
@@ -423,11 +481,23 @@ export default function ChatPage() {
                         <VoiceVisual
                             language={language}
                             onLanguageChange={setLanguage}
-                            messages={messages}
+                            messages={messages as any[]}
                             isStreaming={isLoading}
                             onSend={sendMessage}
-                            onApprove={approveToolCall}
-                            onReject={rejectToolCall}
+                            onApprove={(id: string) => {
+                                if (pendingToolCall) {
+                                    executeAndApprove(
+                                        pendingToolCall.toolCallId,
+                                        pendingToolCall.toolName,
+                                        (pendingToolCall.input ?? {}) as Record<string, unknown>,
+                                    );
+                                }
+                            }}
+                            onReject={(id: string) => {
+                                if (pendingToolCall) {
+                                    rejectTool(pendingToolCall.toolCallId, pendingToolCall.toolName);
+                                }
+                            }}
                             pendingConfirmId={pendingConfirmId}
                         />
                     </motion.div>
@@ -547,7 +617,7 @@ export default function ChatPage() {
                                                 type="button"
                                                 variant="destructive"
                                                 size="sm"
-                                                onClick={stopGeneration}
+                                                onClick={stop}
                                                 className="gap-1"
                                             >
                                                 <Square size={13} /> Stop

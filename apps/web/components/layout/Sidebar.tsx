@@ -5,14 +5,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
-    Home,
     MessageSquare,
     LayoutDashboard,
     Settings,
-    Workflow,
-    Sparkles,
-    Brain,
-    Server,
 } from 'lucide-react';
 
 interface NavItem {
@@ -22,17 +17,9 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-    { href: '/', label: 'Home', icon: <Home size={20} /> },
     { href: '/chat', label: 'Chat', icon: <MessageSquare size={20} /> },
     { href: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-];
-
-const accountItems: NavItem[] = [
     { href: '/settings', label: 'Settings', icon: <Settings size={20} /> },
-    { href: '/settings/automations', label: 'Automations', icon: <Workflow size={20} /> },
-    { href: '/settings/skills', label: 'Skills', icon: <Sparkles size={20} /> },
-    { href: '/settings/memory', label: 'Memory', icon: <Brain size={20} /> },
-    { href: '/settings/mcp', label: 'MCP Servers', icon: <Server size={20} /> },
 ];
 
 /**
@@ -40,18 +27,17 @@ const accountItems: NavItem[] = [
  *
  * Rules:
  * - "/" matches only the exact root path.
- * - "/settings" matches "/settings" but NOT "/settings/automations" so that
- *   the parent item doesn't stay highlighted when a child is active.
- * - All other hrefs use an exact match augmented by a trailing-slash-insensitive
- *   comparison, because `trailingSlash: true` in next.config.ts causes the
- *   browser URL to carry a trailing slash while `usePathname()` may or may not
- *   include it depending on the navigation method.
+ * - "/settings" matches any path starting with "/settings" (prefix match)
+ *   so the Settings item stays highlighted on sub-pages.
+ * - All other hrefs use exact match with trailing-slash normalisation.
  */
 function isNavActive(pathname: string, href: string): boolean {
-    // Normalise both sides: strip any trailing slash for comparison
     const norm = (p: string) => p.replace(/\/$/, '') || '/';
     const current = norm(pathname);
     const target  = norm(href);
+
+    // Settings: prefix match so it highlights on /settings/tools, /settings/memory, etc.
+    if (target === '/settings') return current.startsWith('/settings');
 
     return current === target;
 }
@@ -84,34 +70,9 @@ export function Sidebar() {
                 </div>
             </div>
 
-            {/* Main Navigation */}
+            {/* Navigation */}
             <nav className="flex-1 space-y-1 p-4">
-                <p className="px-4 py-2 text-xs font-medium uppercase text-[var(--text-muted)]">
-                    Main
-                </p>
-
                 {navItems.map((item) => (
-                    <Link
-                        key={item.href}
-                        href={item.href}
-                        prefetch={false}
-                        className={cn(
-                            'flex items-center gap-3 rounded-[var(--radius-md)] px-4 py-3 text-sm font-medium transition-all',
-                            isNavActive(pathname, item.href)
-                                ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
-                                : 'text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)]',
-                        )}
-                    >
-                        {item.icon}
-                        {item.label}
-                    </Link>
-                ))}
-
-                <p className="mt-6 px-4 py-2 text-xs font-medium uppercase text-[var(--text-muted)]">
-                    Account
-                </p>
-
-                {accountItems.map((item) => (
                     <Link
                         key={item.href}
                         href={item.href}

@@ -14,7 +14,7 @@ import { browserBridgeRoute, isBrowserConnected } from './browser/bridge';
 import { skillsRoute } from './routes/skills.route';
 import { initSkills } from './skills/skills.store';
 import { getSystemStats } from './debug/hardware';
-import { getActiveProviderLabel } from './llm/provider';
+import { getActiveProviderLabel } from './llm/ai-provider';
 import { mcpRoutes, initMcpServers } from './routes/mcp.route.js';
 
 // Load settings.json (merges on top of env defaults) before handling any requests
@@ -89,7 +89,7 @@ const app = new Elysia()
     // MCP server management
     .use(mcpRoutes)
 
-    // Chat routes
+    // Chat routes (Vercel AI SDK)
     .use(chatStreamRoute)
 
     // Start server

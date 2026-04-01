@@ -1,4 +1,4 @@
-import { chatCompletion } from '../llm/provider';
+import { generateCompletion } from '../llm/ai-provider';
 import { saveMemory } from './memory.store';
 import { embedAndCacheMemory } from './memory.search';
 import type { ChatMessage } from '@aurelius/shared-schema';
@@ -107,9 +107,8 @@ export async function extractAndSaveMemories(
     }];
 
     try {
-        const response = await chatCompletion(
+        const response = await generateCompletion(
             extractionMessages,
-            undefined,
             EXTRACTION_SYSTEM_PROMPT,
         );
 

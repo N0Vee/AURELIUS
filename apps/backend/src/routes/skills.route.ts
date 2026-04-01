@@ -9,7 +9,7 @@ import {
     getActiveSkillName,
     setActiveSkill,
 } from '../skills/skills.store';
-import { chatCompletion } from '../llm/provider';
+import { generateCompletion } from '../llm/ai-provider';
 import type { ChatMessage } from '@aurelius/shared-schema';
 
 // ============================================================
@@ -116,9 +116,8 @@ Guidelines for writing good skills:
             ];
 
             try {
-                let content = await chatCompletion(
+                let content = await generateCompletion(
                     messages,
-                    undefined,
                     systemPrompt,
                 );
 

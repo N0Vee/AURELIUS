@@ -318,7 +318,7 @@ export default function MemoryPage() {
 
                 {/* ── Header ─────────────────────────────── */}
                 <div className="mb-8">
-                    <p className="text-sm text-[var(--text-muted)]">Pages / Settings / Memory</p>
+                    <p className="text-sm text-[var(--text-muted)]">Settings / Memory</p>
                     <div className="flex items-center justify-between mt-1 flex-wrap gap-3">
                         <div className="flex items-center gap-3">
                             <Brain size={28} className="text-[var(--accent)]" />

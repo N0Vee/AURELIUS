@@ -69,7 +69,7 @@ export default function McpSettingsPage() {
             <Container>
                 {/* ── Page Header ──────────────────────────────── */}
                 <div className="mb-8">
-                    <p className="text-sm text-[var(--text-muted)]">Pages / Settings / MCP Servers</p>
+                    <p className="text-sm text-[var(--text-muted)]">Settings / MCP Servers</p>
 
                     <div className="flex items-center justify-between mt-1">
                         <h1 className="text-3xl font-bold text-[var(--text-primary)]">MCP Servers</h1>
