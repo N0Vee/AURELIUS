@@ -74,8 +74,23 @@ export async function extractAndSaveMemories(
     messages: ChatMessage[],
 ): Promise<number> {
     // Only consider user + assistant text messages
+    // Skip system-reminders, tool results, and non-conversational content
     const relevant = messages
-        .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0)
+        .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 10)
+        .filter(m => {
+            const content = m.content.toLowerCase();
+            // Skip system-reminders and opencode messages
+            if (content.includes('<system-reminder>') || content.includes('</system-reminder>')) return false;
+            if (content.includes('operational mode has changed')) return false;
+            if (content.includes('read-only mode') || content.includes('build mode')) return false;
+            if (content.includes('tool output') || content.includes('tool execution')) return false;
+            // Skip very short or generic responses
+            if (content.length < 20) return false;
+            if (['ok', 'yes', 'no', 'sure', 'thanks', 'done', 'okay'].includes(content.trim())) return false;
+            // Skip responses that are just status messages
+            if (content.startsWith('running') || content.startsWith('executing')) return false;
+            return true;
+        })
         .slice(-24); // Cap to last 24 messages for cost efficiency
 
     if (relevant.length < 2) return 0;

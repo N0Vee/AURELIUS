@@ -5,7 +5,7 @@ class AudioProcessor extends AudioWorkletProcessor {
     constructor() {
         super();
         this.buffer = [];
-        this.targetBufferSize = 512;
+        this.targetBufferSize = 4096;
     }
 
     process(inputs, outputs, parameters) {

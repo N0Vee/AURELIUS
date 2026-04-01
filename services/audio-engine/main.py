@@ -42,13 +42,23 @@ async def health():
 
 @app.post("/api/tts")
 async def text_to_speech(request: TTSRequest):
+    has_thai = any("\u0e00" <= c <= "\u0e7f" for c in request.text)
     audio_bytes = await engine.synthesize_speech(request.text, request.voice)
     if not audio_bytes:
         return Response(content="TTS failed", status_code=500)
+
+    # Pocket-TTS returns WAV, edge-tts returns MP3
+    if has_thai:
+        media_type = "audio/mpeg"
+        filename = "speech.mp3"
+    else:
+        media_type = "audio/wav"
+        filename = "speech.wav"
+
     return Response(
         content=audio_bytes,
-        media_type="audio/mpeg",
-        headers={"Content-Disposition": "inline; filename=speech.mp3"},
+        media_type=media_type,
+        headers={"Content-Disposition": f"inline; filename={filename}"},
     )
 
 

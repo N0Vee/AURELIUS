@@ -301,7 +301,7 @@ export default function ChatPage() {
         }
     }, [messages, mode, speakText]);
 
-    const pendingConfirmId = messages.find(m => m.role === 'tool_confirm' && m.status === 'pending')?.id ?? null;
+    const pendingConfirmId = (messages.find(m => m.role === 'tool_confirm' && m.status === 'pending') as any)?.pendingId ?? null;
     const { pendingImage, captureScreen, pasteFromClipboard, clearPendingImage } = useScreenCapture();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 

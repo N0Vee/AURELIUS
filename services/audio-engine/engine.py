@@ -4,7 +4,6 @@ import time
 from typing import Optional
 
 import numpy as np
-from scipy import signal
 
 os.environ["PYTHONUNBUFFERED"] = "1"
 
@@ -16,12 +15,15 @@ def log(tag, msg):
 class AudioEngine:
     def __init__(self):
         self.pipe = None
+        self.pocket_tts = None
+        self.pocket_voice = None
         self.is_ready = False
         self._input_sample_rate = 48000
 
     def initialize(self):
         try:
             self._load_whisper()
+            self._load_pocket_tts()
             self.is_ready = True
             log("INIT", "Ready")
         except Exception as e:
@@ -47,6 +49,7 @@ class AudioEngine:
             dtype=torch_dtype,
             low_cpu_mem_usage=True,
             use_safetensors=True,
+            attn_implementation="sdpa",  # scaled dot-product attention — faster, no extra deps
         )
         model.to(device)
 
@@ -63,12 +66,14 @@ class AudioEngine:
 
         log("WHISPER", "Loaded")
 
-    @staticmethod
-    def _resample(audio_data, from_rate, to_rate):
-        if from_rate == to_rate:
-            return audio_data
-        num_samples = int(len(audio_data) * to_rate / from_rate)
-        return signal.resample(audio_data, num_samples).astype(np.float32)
+    def _load_pocket_tts(self):
+        """Load Pocket-TTS for fast English TTS."""
+        from pocket_tts import TTSModel
+
+        log("POCKET-TTS", "Loading model...")
+        self.pocket_tts = TTSModel.load_model()
+        self.pocket_voice = self.pocket_tts.get_state_for_audio_prompt("cosette")
+        log("POCKET-TTS", "Loaded")
 
     async def process_audio_stream(self, websocket):
         log("WS", "Client connected")
@@ -129,15 +134,24 @@ class AudioEngine:
         if not self.is_ready or self.pipe is None:
             return ""
 
-        try:
-            # Resample to 16kHz (Whisper's native rate)
-            if self._input_sample_rate != 16000:
-                audio_data = self._resample(audio_data, self._input_sample_rate, 16000)
+        # Gate on RMS energy — skip GPU work entirely for silence/background noise.
+        # Threshold ~0.005 rejects near-silence while passing normal speech.
+        rms = float(np.sqrt(np.mean(audio_data ** 2)))
+        if rms < 0.005:
+            log("TRANSCRIBE", f"Silence skipped (rms={rms:.4f})")
+            return ""
 
+        try:
+            # Pass raw array + sampling_rate as dict — the pipeline's feature
+            # extractor handles resampling to 16 kHz internally.
             result = self.pipe(
-                audio_data,
+                {"raw": audio_data, "sampling_rate": self._input_sample_rate},
                 return_timestamps=False,
-                generate_kwargs={"language": None, "task": "transcribe"},
+                generate_kwargs={
+                    "language": None,       # auto-detect Thai vs English
+                    "task": "transcribe",
+                    "temperature": 0.0,     # deterministic — no random sampling
+                },
             )
 
             return result["text"].strip() if result.get("text") else ""
@@ -147,16 +161,42 @@ class AudioEngine:
             return ""
 
     async def synthesize_speech(self, text: str, voice: Optional[str] = None) -> bytes:
+        has_thai = any("\u0e00" <= c <= "\u0e7f" for c in text)
+
+        if has_thai:
+            # Thai → edge-tts
+            return await self._synthesize_edge_tts(text, "th-TH-PremwadeeNeural")
+        else:
+            # English → Pocket-TTS (fast, local)
+            return await self._synthesize_pocket_tts(text)
+
+    async def _synthesize_pocket_tts(self, text: str) -> bytes:
+        """Fast local TTS using Pocket-TTS (~200ms latency)."""
+        import io
+        import scipy.io.wavfile
+
+        if not self.pocket_tts:
+            log("TTS", "Pocket-TTS not loaded, falling back to edge-tts")
+            return await self._synthesize_edge_tts(text, "en-US-JennyNeural")
+
+        try:
+            log("TTS", f"Pocket-TTS: '{text[:50]}'")
+            audio = self.pocket_tts.generate_audio(self.pocket_voice, text)
+            buf = io.BytesIO()
+            scipy.io.wavfile.write(buf, self.pocket_tts.sample_rate, audio.numpy())
+            return buf.getvalue()
+
+        except Exception as e:
+            log("TTS", f"Pocket-TTS error: {e}, falling back to edge-tts")
+            return await self._synthesize_edge_tts(text, "en-US-JennyNeural")
+
+    async def _synthesize_edge_tts(self, text: str, voice: str) -> bytes:
+        """Cloud TTS using edge-tts (supports Thai)."""
         import io
         import edge_tts
 
-        has_thai = any("\u0e00" <= c <= "\u0e7f" for c in text)
-        if has_thai:
-            voice = "th-TH-PremwadeeNeural"
-        elif voice is None:
-            voice = "en-US-JennyNeural"
-
         try:
+            log("TTS", f"edge-tts: '{text[:50]}' ({voice})")
             communicate = edge_tts.Communicate(text, voice)
             audio_data = io.BytesIO()
             async for chunk in communicate.stream():
@@ -165,7 +205,7 @@ class AudioEngine:
             return audio_data.getvalue()
 
         except Exception as e:
-            log("TTS", f"ERROR: {e}")
+            log("TTS", f"edge-tts error: {e}")
             return b""
 
 
