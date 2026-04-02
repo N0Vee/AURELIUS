@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 import time
 from typing import Optional
 
@@ -19,16 +20,98 @@ class AudioEngine:
         self.pocket_voice = None
         self.is_ready = False
         self._input_sample_rate = 48000
+        self.whisper_model_id = os.getenv("WHISPER_MODEL", "openai/whisper-large-v3-turbo")
+        self.state = "idle"
+        self.phase = "idle"
+        self.status_message = "Audio engine has not started yet."
+        self.last_error = None
+        self.started_at = None
+        self.ready_at = None
+        self._status_lock = threading.Lock()
+        self._init_thread: Optional[threading.Thread] = None
 
     def initialize(self):
+        self.start_background_initialization()
+
+    def _set_status_locked(
+        self,
+        state: str,
+        phase: str,
+        message: str,
+        error: Optional[str] = None,
+    ):
+        self.state = state
+        self.phase = phase
+        self.status_message = message
+        self.last_error = error
+
+    def _set_status(
+        self,
+        state: str,
+        phase: str,
+        message: str,
+        error: Optional[str] = None,
+    ):
+        with self._status_lock:
+            self._set_status_locked(state, phase, message, error)
+
+    def get_status(self):
+        with self._status_lock:
+            status = "healthy" if self.is_ready else ("error" if self.state == "error" else "starting")
+            return {
+                "status": status,
+                "ready": self.is_ready,
+                "state": self.state,
+                "phase": self.phase,
+                "message": self.status_message,
+                "error": self.last_error,
+                "model": self.whisper_model_id,
+                "startedAt": self.started_at,
+                "readyAt": self.ready_at,
+            }
+
+    def start_background_initialization(self):
+        with self._status_lock:
+            if self.is_ready:
+                return
+
+            if self._init_thread and self._init_thread.is_alive():
+                return
+
+            self.started_at = time.time()
+            self.ready_at = None
+            self.is_ready = False
+            self._set_status_locked(
+                "starting",
+                "bootstrap",
+                "Preparing speech runtime...",
+            )
+            self._init_thread = threading.Thread(
+                target=self._initialize_worker,
+                name="audio-engine-init",
+                daemon=True,
+            )
+            self._init_thread.start()
+
+    def _initialize_worker(self):
         try:
+            self._set_status("starting", "whisper", f"Loading Whisper model {self.whisper_model_id}...")
             self._load_whisper()
+            self._set_status("starting", "tts", "Loading Pocket-TTS voice model...")
             self._load_pocket_tts()
             self.is_ready = True
+            self.ready_at = time.time()
+            self._set_status("ready", "ready", "Audio engine ready.")
             log("INIT", "Ready")
         except Exception as e:
+            self.is_ready = False
+            self._set_status(
+                "error",
+                "error",
+                f"Audio engine failed to start: {e}",
+                str(e),
+            )
             log("INIT", f"FAILED: {e}")
-            raise e
 
     def _load_whisper(self):
         import torch
@@ -38,14 +121,13 @@ class AudioEngine:
             pipeline,
         )
 
-        model_id = os.getenv("WHISPER_MODEL", "openai/whisper-large-v3-turbo")
         device = "cuda" if torch.cuda.is_available() else "cpu"
         torch_dtype = torch.float16 if device == "cuda" else torch.float32
 
-        log("WHISPER", f"Loading {model_id} on {device} ({torch_dtype})")
+        log("WHISPER", f"Loading {self.whisper_model_id} on {device} ({torch_dtype})")
 
         model = AutoModelForSpeechSeq2Seq.from_pretrained(
-            model_id,
+            self.whisper_model_id,
             dtype=torch_dtype,
             low_cpu_mem_usage=True,
             use_safetensors=True,
@@ -53,7 +135,7 @@ class AudioEngine:
         )
         model.to(device)
 
-        processor = AutoProcessor.from_pretrained(model_id)
+        processor = AutoProcessor.from_pretrained(self.whisper_model_id)
 
         self.pipe = pipeline(
             "automatic-speech-recognition",

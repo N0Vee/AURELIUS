@@ -3,7 +3,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSettings, type Settings } from '@/hooks/useSettings';
 import { useOpenRouterModels, isModelFree, formatContextLength } from '@/hooks/useOpenRouterModels';
-import { useAutostart } from '@/hooks/useAutostart';
 import { Container } from '@/components/layout';
 import {
     Card, CardHeader, CardTitle, CardDescription, CardContent,
@@ -31,8 +30,6 @@ import {
     Radio,
     Search,
     ChevronDown,
-    MonitorPlay,
-    Power,
 } from 'lucide-react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
@@ -70,6 +67,7 @@ export default function SettingsPage() {
         testConnection,
         clearTestResult,
         clearSaveError,
+        refetch,
     } = useSettings();
 
     // Draft starts as null.
@@ -93,22 +91,6 @@ export default function SettingsPage() {
         error: orModelsError,
         refetch: refetchModels,
     } = useOpenRouterModels(settings?.openrouterApiKeySet ?? false);
-
-    // ── Autostart (Desktop only) ──────────────────────────────────────────
-    const {
-        isTauri,
-        enabled:   autostartEnabled,
-        isLoading: autostartLoading,
-        error:     autostartError,
-        toggle:    toggleAutostart,
-    } = useAutostart();
-    const [autostartSaving, setAutostartSaving] = useState(false);
-
-    const handleAutostartToggle = useCallback(async () => {
-        setAutostartSaving(true);
-        await toggleAutostart(!autostartEnabled);
-        setAutostartSaving(false);
-    }, [autostartEnabled, toggleAutostart]);
 
     // Effective values shown in every input field
     const form = useMemo(() => draft ?? settings, [draft, settings]);
@@ -186,6 +168,24 @@ export default function SettingsPage() {
     };
 
     // ── Loading ──────────────────────────────────────────────
+    if (!form && error) {
+        return (
+            <div className="flex items-center justify-center h-screen px-6">
+                <div className="flex max-w-md flex-col items-center gap-4 text-center">
+                    <AlertTriangle size={32} className="text-[var(--dangerous)]" />
+                    <div className="space-y-1">
+                        <p className="text-sm font-medium text-[var(--text-primary)]">Settings failed to load</p>
+                        <p className="text-sm text-[var(--text-muted)]">{error}</p>
+                    </div>
+                    <Button onClick={() => void refetch()} className="gap-2">
+                        <RotateCcw size={14} />
+                        Retry
+                    </Button>
+                </div>
+            </div>
+        );
+    }
+
     if (isLoading || !form) {
         return (
             <div className="flex items-center justify-center h-screen">
@@ -742,10 +742,10 @@ export default function SettingsPage() {
                                     <Input
                                         value={form.audioEngineUrl}
                                         onChange={e => update('audioEngineUrl', e.target.value)}
-                                        placeholder="ws://localhost:8000/ws"
+                                        placeholder="ws://localhost:8000/ws/audio"
                                     />
                                     <FieldHint>
-                                        WebSocket URL for the Typhoon-2-Audio Python service.
+                                        Full audio WebSocket endpoint. Legacy /ws values are still accepted and normalized automatically.
                                     </FieldHint>
                                 </div>
 
@@ -989,81 +989,6 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
                 </section>
-
-                {/* ── Startup (Desktop only) ───────────────────── */}
-                {isTauri && (
-                    <section className="mb-6">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                    <MonitorPlay size={18} className="text-[var(--accent)]" />
-                                    Startup
-                                </CardTitle>
-                                <CardDescription>
-                                    Control whether Aurelius launches automatically when you log in to Windows.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex items-center justify-between gap-6 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] px-5 py-4">
-                                    {/* Label + description */}
-                                    <div className="flex items-center gap-4 min-w-0">
-                                        <div className={cn(
-                                            'flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] transition-colors',
-                                            autostartEnabled
-                                                ? 'bg-[var(--accent-muted)]'
-                                                : 'bg-[var(--surface-hover)]',
-                                        )}>
-                                            <Power size={18} className={autostartEnabled ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'} />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="text-sm font-medium text-[var(--text-primary)]">
-                                                Launch at login
-                                            </p>
-                                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                                                {autostartLoading
-                                                    ? 'Checking current status…'
-                                                    : autostartEnabled
-                                                        ? 'Aurelius starts automatically when Windows boots.'
-                                                        : 'Aurelius will not start automatically on login.'}
-                                            </p>
-                                            {autostartError && (
-                                                <p className="text-xs text-[var(--dangerous)] mt-1">{autostartError}</p>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Toggle */}
-                                    <button
-                                        type="button"
-                                        role="switch"
-                                        aria-checked={autostartEnabled}
-                                        onClick={handleAutostartToggle}
-                                        disabled={autostartLoading || autostartSaving}
-                                        className={cn(
-                                            'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
-                                            autostartEnabled
-                                                ? 'bg-[var(--accent)]'
-                                                : 'bg-[var(--surface-hover)] border border-[var(--border)]',
-                                        )}
-                                    >
-                                        <span className={cn(
-                                            'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform',
-                                            autostartEnabled ? 'translate-x-5' : 'translate-x-0',
-                                        )} />
-                                    </button>
-                                </div>
-
-                                <p className="mt-3 text-xs text-[var(--text-muted)]">
-                                    This setting writes to the Windows Registry at{' '}
-                                    <code className="text-[var(--accent)] bg-[var(--surface)] px-1.5 py-0.5 rounded text-[10px]">
-                                        HKCU\Software\Microsoft\Windows\CurrentVersion\Run
-                                    </code>
-                                    {' '}— the same mechanism used by apps like Discord and Spotify.
-                                </p>
-                            </CardContent>
-                        </Card>
-                    </section>
-                )}
 
             </Container>
 

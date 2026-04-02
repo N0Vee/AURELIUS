@@ -8,7 +8,7 @@ class AudioProcessor extends AudioWorkletProcessor {
         this.targetBufferSize = 4096;
     }
 
-    process(inputs, outputs, parameters) {
+    process(inputs) {
         const input = inputs[0];
 
         if (input && input.length > 0 && input[0].length > 0) {

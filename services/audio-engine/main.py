@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+import os
+import sys
 
 from dotenv import load_dotenv
 
@@ -15,7 +17,7 @@ import uvicorn
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    engine.initialize()
+    engine.start_background_initialization()
     yield
 
 
@@ -37,7 +39,7 @@ class TTSRequest(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "ready": engine.is_ready}
+    return engine.get_status()
 
 
 @app.post("/api/tts")
@@ -71,5 +73,22 @@ async def audio_stream(websocket: WebSocket):
         pass
 
 
+
+def parse_bool(value: Optional[str], default: bool) -> bool:
+    if value is None:
+        return default
+
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
+    is_frozen = bool(getattr(sys, "frozen", False))
+    host = os.getenv("AUDIO_ENGINE_HOST", "0.0.0.0")
+    port = int(os.getenv("AUDIO_ENGINE_PORT", "8000"))
+    reload_enabled = parse_bool(
+        os.getenv("AUDIO_ENGINE_RELOAD"),
+        default=not is_frozen,
+    )
+    app_target = app if is_frozen else "main:app"
+
+    uvicorn.run(app_target, host=host, port=port, reload=reload_enabled, log_level="info")

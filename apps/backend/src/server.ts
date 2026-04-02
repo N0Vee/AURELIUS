@@ -33,8 +33,9 @@ await initMemoryStore();
 await initMcpServers();
 
 const app = new Elysia()
-    // CORS for Next.js frontend & Tauri desktop shell
-    // Reflect any provided origin so desktop WebView requests always pass.
+    // CORS for the Next.js frontend and browser extension bridge.
+    // Reflect any provided origin so local clients can connect without a
+    // hardcoded origin allowlist during development.
     .use(cors({
         origin: true,
         credentials: true,
@@ -110,11 +111,9 @@ console.log(`
 export type App = typeof app;
 
 // ── Graceful shutdown ────────────────────────────────────────────────────────
-// On Windows the Tauri sidecar kill() call sends a hard TerminateProcess, so
-// SIGTERM may never arrive — but we register both signals so the port is
-// always released cleanly when the signal IS delivered (dev mode, Linux, macOS)
-// and to make `bun run dev:backend` stoppable with Ctrl+C without leaving a
-// zombie process holding port 4243.
+// Some Windows launchers stop the backend with a hard process kill, so SIGTERM
+// may never arrive. We still register both signals so the port is released
+// cleanly whenever the runtime does deliver them.
 
 function shutdown(signal: string) {
     console.log(`\n[Server] Received ${signal} — stopping server and releasing port ${env.PORT}…`);

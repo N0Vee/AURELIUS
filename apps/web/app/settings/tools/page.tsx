@@ -4,7 +4,6 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useSettings, type Settings } from '@/hooks/useSettings';
 import { Container } from '@/components/layout';
 import {
-    Card, CardHeader, CardTitle, CardDescription, CardContent,
     Button, Input, Badge,
 } from '@/components/ui';
 import {
@@ -44,6 +43,7 @@ export default function ToolsSettingsPage() {
         saveError,
         saveSettings,
         clearSaveError,
+        refetch,
     } = useSettings();
 
     const [draft, setDraft] = useState<Settings | null>(null);
@@ -130,18 +130,28 @@ export default function ToolsSettingsPage() {
         clearSaveError();
     };
 
-    if (isLoading || !form) {
+    if (!form && error) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <Loader2 size={24} className="animate-spin text-[var(--accent)]" />
+            <div className="flex items-center justify-center h-64 px-6">
+                <div className="flex max-w-md flex-col items-center gap-4 text-center">
+                    <X size={24} className="text-[var(--dangerous)]" />
+                    <div className="space-y-1">
+                        <p className="text-sm font-medium text-[var(--text-primary)]">Tools settings failed to load</p>
+                        <p className="text-sm text-[var(--text-muted)]">{error}</p>
+                    </div>
+                    <Button size="sm" onClick={() => void refetch()} className="gap-2">
+                        <RotateCcw size={14} />
+                        Retry
+                    </Button>
+                </div>
             </div>
         );
     }
 
-    if (error) {
+    if (isLoading || !form) {
         return (
             <div className="flex items-center justify-center h-64">
-                <p className="text-sm text-[var(--text-muted)]">{error}</p>
+                <Loader2 size={24} className="animate-spin text-[var(--accent)]" />
             </div>
         );
     }

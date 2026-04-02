@@ -5,16 +5,41 @@ import { Mic, MicOff, Check, X, AlertTriangle, Zap, Loader2, Send } from 'lucide
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { cn, isToolPart } from '@/lib/utils';
-import { getToolName } from 'ai';
+import { getToolName, type TextUIPart, type UIMessage } from 'ai';
 
 interface VoiceVisualProps {
-    messages: any[];
+    messages: VoiceMessage[];
     isStreaming: boolean;
     onSend: (text: string) => void;
     onApprove: (id: string) => void;
     onReject: (id: string) => void;
     pendingConfirmId: string | null;
 }
+
+type ToolMessagePart = Extract<UIMessage['parts'][number], { toolCallId: string }>;
+
+interface LegacyMessageBase {
+    id: string;
+    content?: string;
+    parts?: TextUIPart[];
+}
+
+interface LegacyToolAutoMessage extends LegacyMessageBase {
+    role: 'tool_auto';
+    displayName?: string;
+    toolName?: string;
+}
+
+interface LegacyToolConfirmMessage extends LegacyMessageBase {
+    role: 'tool_confirm';
+    pendingId: string;
+    permissionLevel?: keyof typeof LEVEL_STYLES;
+    displayName?: string;
+    toolName?: string;
+    status?: 'pending' | 'approved' | 'rejected';
+}
+
+type VoiceMessage = UIMessage | LegacyToolAutoMessage | LegacyToolConfirmMessage;
 
 // ── Permission level config ───────────────────────────────────────────────────
 
@@ -27,18 +52,24 @@ const LEVEL_STYLES = {
 // ── Subcomponents ─────────────────────────────────────────────────────────────
 
 // Helper: extract text content from a v2 UIMessage (parts-based) or v1 message (.content string)
-function getMessageText(msg: any): string {
+function getMessageText(msg: VoiceMessage): string {
     if (msg.parts?.length) {
-        return msg.parts
-            .filter((p: any) => p.type === 'text')
-            .map((p: any) => p.text)
-            .join('\n');
+        const textParts: string[] = [];
+
+        for (const part of msg.parts) {
+            if (part.type === 'text') {
+                textParts.push(part.text);
+            }
+        }
+
+        return textParts.join('\n');
     }
-    return msg.content ?? '';
+
+    return 'content' in msg ? msg.content ?? '' : '';
 }
 
-function ToolConfirmBubble({ msg, onApprove, onReject }: { msg: any; onApprove: () => void; onReject: () => void }) {
-    const cfg = (LEVEL_STYLES as any)[msg.permissionLevel || 'DANGEROUS'] || LEVEL_STYLES.DANGEROUS;
+function ToolConfirmBubble({ msg, onApprove, onReject }: { msg: LegacyToolConfirmMessage; onApprove: () => void; onReject: () => void }) {
+    const cfg = LEVEL_STYLES[msg.permissionLevel ?? 'DANGEROUS'] ?? LEVEL_STYLES.DANGEROUS;
     const { Icon } = cfg;
     const displayText = getMessageText(msg);
 
@@ -47,11 +78,11 @@ function ToolConfirmBubble({ msg, onApprove, onReject }: { msg: any; onApprove: 
             <div className={cn("max-w-[90%] rounded-lg px-3 py-2.5 border", cfg.bg, cfg.border)}>
                 <div className="flex items-center gap-2">
                     <Icon size={14} className={cfg.color} />
-                    <span className="text-sm font-medium text-[var(--text-primary)]">{msg.displayName || msg.toolName}</span>
+                    <span className="text-sm font-medium text-[var(--text-primary)]">{msg.displayName || msg.toolName || 'Tool action'}</span>
                 </div>
                 <div className="mt-1.5">
                     <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", cfg.color, cfg.bg)}>
-                        {msg.permissionLevel}
+                        {msg.permissionLevel ?? 'DANGEROUS'}
                     </span>
                 </div>
                 {displayText && <p className="text-xs text-[var(--text-secondary)] mt-2">{displayText}</p>}
@@ -83,7 +114,7 @@ function ToolConfirmBubble({ msg, onApprove, onReject }: { msg: any; onApprove: 
     );
 }
 
-function MessageBubble({ msg, isStreaming, isLast, onApprove, onReject }: { msg: any; isStreaming: boolean; isLast: boolean; onApprove: (id: string) => void; onReject: (id: string) => void }) {
+function MessageBubble({ msg, isStreaming, isLast, onApprove, onReject }: { msg: VoiceMessage; isStreaming: boolean; isLast: boolean; onApprove: (id: string) => void; onReject: (id: string) => void }) {
     const text = getMessageText(msg);
 
     if (msg.role === 'user') {
@@ -96,12 +127,12 @@ function MessageBubble({ msg, isStreaming, isLast, onApprove, onReject }: { msg:
 
     if (msg.role === 'assistant') {
         // Extract tool parts from v2 UIMessage
-        const toolParts = (msg.parts ?? []).filter((p: any) => isToolPart(p));
+        const toolParts = msg.parts.filter((part): part is ToolMessagePart => isToolPart(part));
 
         return (
             <div className="flex flex-col gap-2 justify-start">
                 {/* Tool invocation summaries */}
-                {toolParts.map((part: any) => {
+                {toolParts.map((part) => {
                     const name = getToolName(part).replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
                     const state = part.state;
 
@@ -184,7 +215,7 @@ function MessageBubble({ msg, isStreaming, isLast, onApprove, onReject }: { msg:
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function VoiceVisual({ messages, isStreaming, onSend, onApprove, onReject, pendingConfirmId }: VoiceVisualProps) {
-    const { isConnected, isRecording, isSpeaking, toggleRecording, onTranscription, onToolConfirm } = useVoice();
+    const { isConnected, connectionStatus, connectionMessage, isRecording, isSpeaking, toggleRecording, onTranscription, onToolConfirm } = useVoice();
     const scrollRef = useRef<HTMLDivElement>(null);
     const [textInput, setTextInput] = useState('');
 
@@ -235,7 +266,8 @@ export function VoiceVisual({ messages, isStreaming, onSend, onApprove, onReject
             {/* Header */}
             <div className="flex items-center justify-end px-4 py-2 border-b border-[var(--border)]">
                 <div className="flex items-center gap-2">
-                    {!isConnected && <span className="text-xs text-[var(--dangerous)]">Disconnected</span>}
+                    {!isConnected && connectionStatus === 'connecting' && <span className="text-xs text-[var(--text-muted)]">{connectionMessage ?? 'Starting audio...'}</span>}
+                    {!isConnected && connectionStatus === 'disconnected' && <span className="text-xs text-[var(--dangerous)]">{connectionMessage ?? 'Disconnected'}</span>}
                     {isStreaming && <Loader2 size={14} className="animate-spin text-[var(--accent)]" />}
                 </div>
             </div>
@@ -250,14 +282,14 @@ export function VoiceVisual({ messages, isStreaming, onSend, onApprove, onReject
                     </div>
                 )}
 
-                {messages.map((msg: any, i: number) => (
+                {messages.map((msg: VoiceMessage, i: number) => (
                     <MessageBubble key={msg.id} msg={msg} isStreaming={isStreaming} isLast={i === messages.length - 1} onApprove={onApprove} onReject={onReject} />
                 ))}
 
                 {pendingConfirmId && (
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-center">
                         <div className="px-3 py-1.5 rounded-full bg-[var(--accent)]/10 border border-[var(--accent)]/30 text-xs text-[var(--accent)] animate-pulse">
-                            Say "yes" or "no" to confirm
+                            Say &quot;yes&quot; or &quot;no&quot; to confirm
                         </div>
                     </motion.div>
                 )}

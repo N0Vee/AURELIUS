@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import {
     Trash2,
     PlusCircle,
     Mic,
-    Brain,
     Info,
     type LucideIcon,
 } from 'lucide-react';
@@ -25,7 +24,6 @@ interface SlashCommandMenuProps {
     filter: string;
     commands: SlashCommand[];
     onSelect: (cmd: SlashCommand) => void;
-    onClose: () => void;
     /** Ref forwarded so the parent can drive arrow-key navigation */
     selectedIndex: number;
 }
@@ -36,7 +34,6 @@ export function SlashCommandMenu({
     filter,
     commands,
     onSelect,
-    onClose,
     selectedIndex,
 }: SlashCommandMenuProps) {
     const listRef = useRef<HTMLDivElement>(null);

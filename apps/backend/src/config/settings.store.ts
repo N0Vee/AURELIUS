@@ -9,8 +9,7 @@ import { mkdirSync, existsSync, copyFileSync } from 'fs';
 // Settings file path resolution
 // ============================================================
 // Always use the OS app-data directory as the single source of truth.
-// This ensures dev mode (`bun run dev:backend`), Tauri dev (`dev:desktop`),
-// and the compiled sidecar all read/write from the same location.
+// This ensures every runtime reads and writes from the same location.
 //
 // In a compiled Bun binary (bun build --compile), import.meta.dir
 // resolves to a virtual path like "B:\~BUN\root" which is not writable,
@@ -100,7 +99,7 @@ export const SettingsSchema = z.object({
     corsOrigin: z.string().min(1),
 
     // Audio Engine (Phase 2)
-    audioEngineUrl: z.string().url().default('ws://localhost:8000/ws'),
+    audioEngineUrl: z.string().url().default('ws://localhost:8000/ws/audio'),
     opacity: z.number().min(0.05).max(1).default(0.72),
 
     // Prompt & Model Behavior
@@ -154,7 +153,7 @@ function envDefaults(): Settings {
         openrouterSiteUrl: env.OPENROUTER_SITE_URL,
         openrouterSiteName: env.OPENROUTER_SITE_NAME,
         corsOrigin: env.CORS_ORIGIN,
-        audioEngineUrl: process.env.AUDIO_ENGINE_URL || 'ws://localhost:8000/ws',
+        audioEngineUrl: process.env.AUDIO_ENGINE_URL || 'ws://localhost:8000/ws/audio',
         opacity: 0.72,
         systemPrompt: CONSTANTS.SYSTEM_PROMPT,
         temperature: CONSTANTS.TEMPERATURE,

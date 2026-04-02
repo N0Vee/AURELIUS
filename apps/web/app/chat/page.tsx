@@ -7,129 +7,24 @@ import { useScreenCapture } from '@/hooks/useScreenCapture';
 import { useSettings } from '@/hooks/useSettings';
 import { useSessionTokens } from '@/hooks/useSessionTokens';
 import { useOpenRouterModels } from '@/hooks/useOpenRouterModels';
-import { useTauriDrag } from '@/hooks/useTauriDrag';
 import { ChatWindow } from './components/ChatWindow';
 import { SessionSidebar } from './components/SessionSidebar';
 import { VoiceVisual } from './components/VoiceVisual';
 import { SlashCommandMenu, buildDefaultCommands } from './components/SlashCommandMenu';
 import { TokenUsageBar } from './components/TokenUsageBar';
 import { Button } from '@/components/ui';
-import { Send, Square, Trash2, MessageSquare, Mic, Minus, Monitor, ClipboardPaste, X, Plus } from 'lucide-react';
+import { Send, Square, Trash2, MessageSquare, Mic, Monitor, ClipboardPaste, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, isToolPart } from '@/lib/utils';
 import { getToolName } from 'ai';
-import { useIsDesktop } from '@/components/layout/DesktopContext';
 import { useVoice } from '@/components/VoiceProvider';
 import Image from 'next/image';
 
 type Mode = 'chat' | 'voice';
-// ── Overlay title-bar (Tauri only) ────────────────────────────────────────────
-function OverlayTitleBar({
-    mode,
-    onModeChange,
-    onHide,
-    sessions,
-    activeSessionId,
-    onSelectSession,
-    onCreateSession,
-}: {
-    mode: Mode;
-    onModeChange: (m: Mode) => void;
-    onHide: () => void;
-    sessions: any[];
-    activeSessionId: string | null;
-    onSelectSession: (id: string) => void;
-    onCreateSession: () => void;
-}) {
-    const onDrag = useTauriDrag();
-
-    return (
-        <div
-            data-tauri-drag-region
-            onMouseDown={onDrag}
-            className="flex items-center justify-between px-3 py-2 border-b border-[var(--overlay-border)] bg-[var(--overlay-bg)] select-none cursor-grab shrink-0"
-        >
-            {/* Brand — draggable */}
-            <div data-tauri-drag-region className="flex items-center gap-2 pointer-events-none">
-                <div className="relative h-6 w-6 shrink-0 overflow-hidden rounded border border-[var(--border)] bg-black/60 shadow-[0_0_10px_var(--accent-glow)]">
-                    <Image
-                        src="/images/aurelius-icon.png"
-                        alt="Aurelius"
-                        fill
-                        className="object-contain p-0.5"
-                        sizes="24px"
-                        priority
-                    />
-                </div>
-                <span className="text-[11px] font-bold tracking-[0.18em] text-[var(--text-primary)]">
-                    AURELIUS
-                </span>
-            </div>
-
-            {/* Session selector — not draggable */}
-            <div className="flex items-center gap-1 pointer-events-auto">
-                <select
-                    value={activeSessionId || ''}
-                    onChange={(e) => onSelectSession(e.target.value)}
-                    className="text-[10px] bg-[var(--surface)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[var(--text-secondary)] cursor-pointer max-w-[120px]"
-                >
-                    {sessions.map((s: any) => (
-                        <option key={s.id} value={s.id}>
-                            {s.title || 'New Chat'}
-                        </option>
-                    ))}
-                </select>
-                <button
-                    onClick={onCreateSession}
-                    title="New session"
-                    className="flex items-center justify-center h-5 w-5 rounded text-[var(--text-muted)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)] transition-all"
-                >
-                    <Plus size={10} />
-                </button>
-            </div>
-
-            {/* Mode pill + hide — not draggable */}
-            <div className="flex items-center gap-1.5 pointer-events-auto">
-                {/* Chat / Voice toggle */}
-                <div className="flex items-center bg-[var(--surface)] border border-[var(--border)] rounded-full p-0.5">
-                    <button
-                        onClick={() => onModeChange('chat')}
-                        className={cn(
-                            'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all',
-                            mode === 'chat'
-                                ? 'bg-[var(--accent)] text-white shadow-sm'
-                                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]',
-                        )}
-                    >
-                        <MessageSquare size={11} />
-                        Chat
-                    </button>
-                    <button
-                        onClick={() => onModeChange('voice')}
-                        className={cn(
-                            'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all',
-                            mode === 'voice'
-                                ? 'bg-[var(--accent)] text-white shadow-sm'
-                                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]',
-                        )}
-                    >
-                        <Mic size={11} />
-                        Voice
-                    </button>
-                </div>
-
-                {/* Hide (minimise to tray) */}
-                <button
-                    onClick={onHide}
-                    title="Hide overlay (Alt+Space to bring back)"
-                    className="flex items-center justify-center h-6 w-6 rounded-full text-[var(--text-muted)] hover:bg-[var(--surface)] hover:text-[var(--text-primary)] transition-all"
-                >
-                    <Minus size={13} />
-                </button>
-            </div>
-        </div>
-    );
-}
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+const TEXT_EXTENSIONS = ['.txt', '.md', '.json', '.csv', '.ts', '.tsx', '.js', '.jsx', '.py', '.rs', '.toml', '.yaml', '.yml', '.html', '.css', '.xml', '.sh', '.ps1', '.bat', '.cfg', '.ini', '.log'];
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+const MAX_TEXT_SIZE = 100 * 1024;
 
 // ── Web title-bar ─────────────────────────────────────────────────────────────
 function WebTitleBar({
@@ -217,7 +112,6 @@ function WebTitleBar({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function ChatPage() {
-    const isDesktop = useIsDesktop();
     const [mode, setMode] = useState<Mode>('chat');
     const [input, setInput] = useState('');
 
@@ -452,11 +346,6 @@ export default function ChatPage() {
     const [isDragging, setIsDragging] = useState(false);
     const dragCounter = useRef(0);
 
-    const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-    const TEXT_EXTENSIONS = ['.txt', '.md', '.json', '.csv', '.ts', '.tsx', '.js', '.jsx', '.py', '.rs', '.toml', '.yaml', '.yml', '.html', '.css', '.xml', '.sh', '.ps1', '.bat', '.cfg', '.ini', '.log'];
-    const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 MB
-    const MAX_TEXT_SIZE = 100 * 1024;         // 100 KB
-
     const addDroppedFiles = useCallback((fileList: FileList) => {
         Array.from(fileList).forEach((file) => {
             if (IMAGE_TYPES.includes(file.type) && file.size <= MAX_IMAGE_SIZE) {
@@ -529,12 +418,6 @@ export default function ChatPage() {
         }
     }, [addDroppedFiles]);
 
-    // ── Hide overlay window (Tauri only) ──────────────────────────────────────
-    const hideWindow = useCallback(async () => {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        await getCurrentWindow().hide();
-    }, []);
-
     // ── Auto-resize textarea ──────────────────────────────────────────────────
     useEffect(() => {
         if (textareaRef.current) {
@@ -596,29 +479,19 @@ export default function ChatPage() {
         }
     }, [pasteFromClipboard]);
 
-    // ── Overlay layout measurements ───────────────────────────────────────────
-    // In overlay mode the title bar is ~40px, input+toggle ~110px total
-    const scrollPb = isDesktop ? 'pb-36' : 'pb-40 sm:pb-56';
+    const scrollPb = 'pb-40 sm:pb-56';
 
     return (
-        <div
-            className={cn(
-                'flex h-screen',
-                isDesktop && 'rounded-2xl overflow-hidden border border-[var(--overlay-border)] shadow-2xl bg-[var(--overlay-bg)]',
-            )}
-        >
-            {/* ── Session sidebar (web only) ──────────────────────────────── */}
-            {!isDesktop && (
-                <SessionSidebar
-                    sessions={sessions}
-                    activeSessionId={activeSessionId}
-                    onSelect={setActiveSessionId}
-                    onCreate={createSession}
-                    onDelete={deleteSession}
-                    onRename={renameSession}
-                    className="hidden sm:flex"
-                />
-            )}
+        <div className="flex h-screen">
+            <SessionSidebar
+                sessions={sessions}
+                activeSessionId={activeSessionId}
+                onSelect={setActiveSessionId}
+                onCreate={createSession}
+                onDelete={deleteSession}
+                onRename={renameSession}
+                className="hidden sm:flex"
+            />
 
             {/* ── Chat column ────────────────────────────────────────────── */}
             <div
@@ -647,35 +520,22 @@ export default function ChatPage() {
                 )}
             </AnimatePresence>
 
-            {/* ── Title bar ──────────────────────────────────────────────── */}
-            {isDesktop ? (
-                <OverlayTitleBar
-                    mode={mode}
-                    onModeChange={setMode}
-                    onHide={hideWindow}
-                    sessions={sessions}
-                    activeSessionId={activeSessionId}
-                    onSelectSession={setActiveSessionId}
-                    onCreateSession={createSession}
-                />
-            ) : (
-                <WebTitleBar
-                    mode={mode}
-                    onModeChange={setMode}
-                    onClear={clearMessages}
-                    canClear={messages.length > 0}
-                    tokenBar={
-                        <TokenUsageBar
-                            totalTokens={sessionTokens.totalTokens}
-                            promptTokens={sessionTokens.promptTokens}
-                            completionTokens={sessionTokens.completionTokens}
-                            model={sessionTokens.model}
-                            turnCount={sessionTokens.turnCount}
-                            contextLimit={activeModelContextLimit}
-                        />
-                    }
-                />
-            )}
+            <WebTitleBar
+                mode={mode}
+                onModeChange={setMode}
+                onClear={clearMessages}
+                canClear={messages.length > 0}
+                tokenBar={
+                    <TokenUsageBar
+                        totalTokens={sessionTokens.totalTokens}
+                        promptTokens={sessionTokens.promptTokens}
+                        completionTokens={sessionTokens.completionTokens}
+                        model={sessionTokens.model}
+                        turnCount={sessionTokens.turnCount}
+                        contextLimit={activeModelContextLimit}
+                    />
+                }
+            />
 
             {/* ── Main content ───────────────────────────────────────────── */}
             <AnimatePresence mode="wait">
@@ -707,10 +567,10 @@ export default function ChatPage() {
                         className="flex-1 min-h-0"
                     >
                         <VoiceVisual
-                            messages={messages as any[]}
+                            messages={messages}
                             isStreaming={isLoading}
                             onSend={sendMessage}
-                            onApprove={(id: string) => {
+                            onApprove={() => {
                                 if (pendingToolCall) {
                                     executeAndApprove(
                                         pendingToolCall.toolCallId,
@@ -719,7 +579,7 @@ export default function ChatPage() {
                                     );
                                 }
                             }}
-                            onReject={(id: string) => {
+                            onReject={() => {
                                 if (pendingToolCall) {
                                     rejectTool(pendingToolCall.toolCallId, pendingToolCall.toolName);
                                 }
@@ -737,28 +597,15 @@ export default function ChatPage() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 20 }}
-                        className={cn(
-                            'fixed right-0 px-3 pointer-events-none',
-                            isDesktop
-                                ? 'bottom-14 left-0'
-                                : 'bottom-20 sm:bottom-24 left-0 sm:left-[29rem] sm:px-6',
-                        )}
+                        className="fixed bottom-20 left-0 right-0 px-3 pointer-events-none sm:bottom-24 sm:left-[29rem] sm:px-6"
                     >
 
                         <div
-                            className={cn(
-                                'mx-auto pointer-events-auto',
-                                isDesktop ? 'max-w-full' : 'max-w-full sm:max-w-3xl',
-                            )}
+                            className="mx-auto max-w-full pointer-events-auto sm:max-w-3xl"
                         >
                             <form
                                 onSubmit={handleSubmit}
-                                className={cn(
-                                    'relative rounded-2xl p-3 sm:p-4 shadow-2xl',
-                                    isDesktop
-                                        ? 'bg-[var(--overlay-bg)] border border-[var(--overlay-border)] backdrop-blur-xl'
-                                        : 'glass-strong',
-                                )}
+                                className="glass-strong relative rounded-2xl p-3 shadow-2xl sm:p-4"
                             >
                                 {/* ── Slash command menu ───────────────────── */}
                                 {slashOpen && filteredSlashCommands.length > 0 && (
@@ -766,7 +613,6 @@ export default function ChatPage() {
                                         filter={slashFilter}
                                         commands={filteredSlashCommands}
                                         onSelect={handleSlashSelect}
-                                        onClose={() => setSlashOpen(false)}
                                         selectedIndex={slashIndex}
                                     />
                                 )}
@@ -807,9 +653,12 @@ export default function ChatPage() {
                                         {pendingFiles.map((f) =>
                                             f.preview ? (
                                                 <div key={f.id} className="relative inline-block">
-                                                    <img
+                                                    <Image
                                                         src={f.preview}
                                                         alt={f.name}
+                                                        width={96}
+                                                        height={96}
+                                                        unoptimized
                                                         className="max-h-24 w-auto rounded-lg border border-[var(--border)] object-contain"
                                                     />
                                                     <button
@@ -914,19 +763,6 @@ export default function ChatPage() {
                                         </Button>
                                     </div>
                                     <div className="flex items-center gap-2 ml-auto">
-                                        {/* Clear in overlay mode lives here */}
-                                        {isDesktop && (
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={clearMessages}
-                                                disabled={messages.length === 0}
-                                                className="gap-1 text-[var(--text-muted)]"
-                                            >
-                                                <Trash2 size={13} />
-                                            </Button>
-                                        )}
                                         {isLoading ? (
                                             <Button
                                                 type="button"

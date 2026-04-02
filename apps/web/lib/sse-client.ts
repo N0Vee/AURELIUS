@@ -2,11 +2,6 @@
 
 import { useState, useCallback, useRef } from 'react';
 
-interface SSEMessage {
-    event: string;
-    data: unknown;
-}
-
 interface UseSSEOptions {
     onMessage?: (event: string, data: unknown) => void;
     onError?: (error: Error) => void;

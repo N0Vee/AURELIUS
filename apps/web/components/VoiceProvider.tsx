@@ -1,8 +1,99 @@
 'use client';
 
 import { createContext, useContext, useState, useRef, useCallback, useEffect, ReactNode } from 'react';
+import { resolveAudioEngineEndpoints, type AudioEngineEndpoints } from '@/lib/audio-engine';
+import { resolveSettingsApiUrl } from '@/lib/backend-api';
 
-const WS_URL = 'ws://localhost:8000/ws/audio';
+const DEFAULT_AUDIO_ENGINE_URL = 'ws://localhost:8000/ws/audio';
+const AUDIO_RUNTIME_POLL_MS = 5000;
+const HEALTH_TIMEOUT_MS = 2000;
+const DEFAULT_AUDIO_CONNECTING_MESSAGE = 'Starting audio...';
+const DEFAULT_AUDIO_WARMUP_MESSAGE = 'Preparing speech models...';
+
+type VoiceConnectionStatus = 'connecting' | 'connected' | 'disconnected';
+type AudioContextConstructor = typeof AudioContext;
+type WindowWithWebkitAudioContext = Window & {
+    webkitAudioContext?: AudioContextConstructor;
+};
+
+interface AudioRuntimeHealth {
+    reachable: boolean;
+    ready: boolean;
+    state: string;
+    message: string | null;
+    error: string | null;
+}
+
+async function resolveAudioRuntime(): Promise<AudioEngineEndpoints> {
+    let configuredAudioUrl = DEFAULT_AUDIO_ENGINE_URL;
+
+    try {
+        const settingsUrl = await resolveSettingsApiUrl();
+        const res = await fetch(settingsUrl, {
+            method: 'GET',
+            cache: 'no-store',
+        });
+
+        if (res.ok) {
+            const payload = await res.json() as { audioEngineUrl?: string };
+            if (typeof payload.audioEngineUrl === 'string' && payload.audioEngineUrl.trim().length > 0) {
+                configuredAudioUrl = payload.audioEngineUrl.trim();
+            }
+        }
+    } catch { }
+
+    return resolveAudioEngineEndpoints(configuredAudioUrl);
+}
+
+async function fetchAudioRuntimeHealth(healthUrl: string): Promise<AudioRuntimeHealth> {
+    try {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
+
+        try {
+            const res = await fetch(healthUrl, {
+                method: 'GET',
+                cache: 'no-store',
+                signal: controller.signal,
+            });
+
+            if (!res.ok) {
+                return {
+                    reachable: true,
+                    ready: false,
+                    state: 'error',
+                    message: `Audio service returned HTTP ${res.status}.`,
+                    error: null,
+                };
+            }
+
+            const payload = await res.json().catch(() => null) as {
+                ready?: boolean;
+                state?: string;
+                message?: string | null;
+                error?: string | null;
+            } | null;
+
+            return {
+                reachable: true,
+                ready: payload?.ready === true,
+                state: payload?.state ?? (payload?.ready ? 'ready' : 'starting'),
+                message: payload?.message ?? null,
+                error: payload?.error ?? null,
+            };
+        } finally {
+            window.clearTimeout(timeout);
+        }
+    } catch {
+        return {
+            reachable: false,
+            ready: false,
+            state: 'starting',
+            message: DEFAULT_AUDIO_CONNECTING_MESSAGE,
+            error: null,
+        };
+    }
+}
 
 // ── Voice confirmation keywords ───────────────────────────────────────────────
 
@@ -40,6 +131,8 @@ function playBeep(up: boolean) {
 
 interface VoiceContextType {
     isConnected: boolean;
+    connectionStatus: VoiceConnectionStatus;
+    connectionMessage: string | null;
     isRecording: boolean;
     isSpeaking: boolean;
     startRecording: () => void;
@@ -52,7 +145,7 @@ interface VoiceContextType {
 }
 
 const VoiceContext = createContext<VoiceContextType>({
-    isConnected: false, isRecording: false, isSpeaking: false,
+    isConnected: false, connectionStatus: 'connecting', connectionMessage: DEFAULT_AUDIO_CONNECTING_MESSAGE, isRecording: false, isSpeaking: false,
     startRecording: () => { }, stopRecording: () => { },
     toggleRecording: () => { }, speakText: () => { },
     setSessionId: () => { }, onTranscription: () => { }, onToolConfirm: () => { },
@@ -64,10 +157,14 @@ export function useVoice() { return useContext(VoiceContext); }
 
 export function VoiceProvider({ children }: { children: ReactNode }) {
     const [isConnected, setIsConnected] = useState(false);
+    const [connectionStatus, setConnectionStatus] = useState<VoiceConnectionStatus>('connecting');
+    const [connectionMessage, setConnectionMessage] = useState<string | null>(DEFAULT_AUDIO_CONNECTING_MESSAGE);
     const [isRecording, setIsRecording] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
 
     const ws = useRef<WebSocket | null>(null);
+    const connectPromise = useRef<Promise<void> | null>(null);
+    const audioRuntime = useRef<AudioEngineEndpoints | null>(null);
     const audioCtx = useRef<AudioContext | null>(null);
     const worklet = useRef<AudioWorkletNode | null>(null);
     const micStream = useRef<MediaStream | null>(null);
@@ -79,14 +176,28 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const transcriptionCb = useRef<((text: string) => void) | null>(null);
     const toolConfirmCb = useRef<((approved: boolean) => void) | null>(null);
 
+    const ensureAudioRuntime = useCallback(async () => {
+        const nextRuntime = await resolveAudioRuntime();
+        const previousRuntime = audioRuntime.current;
+
+        if (previousRuntime?.websocketUrl && previousRuntime.websocketUrl !== nextRuntime.websocketUrl) {
+            ws.current?.close();
+            ws.current = null;
+        }
+
+        audioRuntime.current = nextRuntime;
+        return nextRuntime;
+    }, []);
+
     // ── TTS ────────────────────────────────────────────────────────────────
 
     const speakText = useCallback(async (text: string) => {
         if (!text.trim()) return;
         try {
+            const runtime = audioRuntime.current ?? await ensureAudioRuntime();
             const hasThai = /[\u0E00-\u0E7F]/.test(text);
             const voice = hasThai ? 'th-TH-PremwadeeNeural' : 'en-US-JennyNeural';
-            const res = await fetch('http://localhost:8000/api/tts', {
+            const res = await fetch(runtime.ttsUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text, voice }),
@@ -96,7 +207,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                 new Audio(URL.createObjectURL(blob)).play();
             }
         } catch { }
-    }, []);
+    }, [ensureAudioRuntime]);
 
     // ── Transcription handler ──────────────────────────────────────────────
 
@@ -123,41 +234,127 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
     // ── WebSocket ──────────────────────────────────────────────────────────
 
-    const connect = useCallback(() => {
-        if (ws.current?.readyState === WebSocket.OPEN) return;
-        ws.current = new WebSocket(WS_URL);
-        ws.current.onopen = () => setIsConnected(true);
-        ws.current.onclose = () => { setIsConnected(false); setIsRecording(false); };
-        ws.current.onerror = () => { };
-        ws.current.onmessage = (event) => {
-            if (typeof event.data === 'string') {
-                try {
-                    const msg = JSON.parse(event.data);
-                    if (msg.type === 'vad') setIsSpeaking(msg.speech_detected);
-                    else if (msg.type === 'transcription' && msg.text) handleTranscription(msg.text);
-                } catch { }
+    const connect = useCallback(async () => {
+        if (ws.current?.readyState === WebSocket.OPEN || ws.current?.readyState === WebSocket.CONNECTING) return;
+        if (connectPromise.current) return connectPromise.current;
+
+        connectPromise.current = (async () => {
+            setConnectionStatus('connecting');
+            setConnectionMessage(DEFAULT_AUDIO_CONNECTING_MESSAGE);
+
+            const runtime = await ensureAudioRuntime();
+            const health = await fetchAudioRuntimeHealth(runtime.healthUrl);
+
+            if (!health.reachable) {
+                setIsConnected(false);
+                setConnectionStatus('connecting');
+                setConnectionMessage(DEFAULT_AUDIO_CONNECTING_MESSAGE);
+                return;
             }
-        };
-    }, [handleTranscription]);
+
+            if (health.state === 'error') {
+                setIsConnected(false);
+                setConnectionStatus('disconnected');
+                setConnectionMessage(health.error ?? health.message ?? 'Audio engine failed to start.');
+                return;
+            }
+
+            if (!health.ready) {
+                setIsConnected(false);
+                setConnectionStatus('connecting');
+                setConnectionMessage(health.message ?? DEFAULT_AUDIO_WARMUP_MESSAGE);
+                return;
+            }
+
+            const socket = new WebSocket(runtime.websocketUrl);
+            ws.current = socket;
+
+            socket.onopen = () => {
+                if (ws.current !== socket) {
+                    return;
+                }
+
+                setIsConnected(true);
+                setConnectionStatus('connected');
+                setConnectionMessage(null);
+            };
+
+            socket.onclose = () => {
+                if (ws.current === socket) {
+                    ws.current = null;
+                }
+
+                setIsConnected(false);
+                setIsRecording(false);
+                setConnectionStatus('disconnected');
+                setConnectionMessage('Audio disconnected.');
+            };
+
+            socket.onerror = () => {
+                setIsConnected(false);
+                setConnectionStatus('disconnected');
+                setConnectionMessage('Audio connection error.');
+            };
+
+            socket.onmessage = (event) => {
+                if (typeof event.data === 'string') {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        if (msg.type === 'vad') setIsSpeaking(msg.speech_detected);
+                        else if (msg.type === 'transcription' && msg.text) handleTranscription(msg.text);
+                    } catch { }
+                }
+            };
+        })().finally(() => {
+            connectPromise.current = null;
+        });
+
+        return connectPromise.current;
+    }, [ensureAudioRuntime, handleTranscription]);
 
     useEffect(() => {
-        connect();
+        void connect();
         const interval = setInterval(() => {
-            if (!ws.current || ws.current.readyState !== WebSocket.OPEN) connect();
-        }, 5000);
-        return () => clearInterval(interval);
+            if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+                void connect();
+            }
+        }, AUDIO_RUNTIME_POLL_MS);
+
+        return () => {
+            clearInterval(interval);
+            ws.current?.close();
+            ws.current = null;
+            if (micStream.current) {
+                micStream.current.getTracks().forEach((track) => track.stop());
+                micStream.current = null;
+            }
+            if (worklet.current) {
+                worklet.current.disconnect();
+                worklet.current = null;
+            }
+            if (audioCtx.current) {
+                void audioCtx.current.close();
+                audioCtx.current = null;
+            }
+        };
     }, [connect]);
 
     // ── Recording ──────────────────────────────────────────────────────────
 
     const startRecording = useCallback(async () => {
+        if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+            await connect();
+        }
         if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
         if (micStream.current) return;
 
         try {
             if (audioCtx.current) { await audioCtx.current.close(); audioCtx.current = null; }
 
-            audioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const AudioContextImpl = window.AudioContext || (window as WindowWithWebkitAudioContext).webkitAudioContext;
+            if (!AudioContextImpl) return;
+
+            audioCtx.current = new AudioContextImpl();
             const url = `/audio-processor.js?t=${Date.now()}_${Math.random()}`;
             await audioCtx.current.audioWorklet.addModule(url);
             if (audioCtx.current.state === 'suspended') await audioCtx.current.resume();
@@ -179,7 +376,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             setIsRecording(true);
             playBeep(true);
         } catch { }
-    }, []);
+    }, [connect]);
 
     const stopRecording = useCallback(() => {
         if (ws.current?.readyState === WebSocket.OPEN) {
@@ -198,29 +395,28 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         else startRecording();
     }, [isRecording, startRecording, stopRecording]);
 
-    // ── F8 global shortcut ─────────────────────────────────────────────────
+    // ── F8 keyboard shortcut ───────────────────────────────────────────────
 
     useEffect(() => {
-        let unlisten: (() => void) | undefined;
-        const setup = async () => {
-            try {
-                const { listen } = await import('@tauri-apps/api/event');
-                unlisten = await listen('voice-toggle', () => toggleRecording());
-            } catch {
-                const handler = (e: KeyboardEvent) => {
-                    if (e.code === 'F8' && !e.repeat) {
-                        const tag = (e.target as HTMLElement).tagName;
-                        if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return;
-                        e.preventDefault();
-                        toggleRecording();
-                    }
-                };
-                window.addEventListener('keydown', handler);
-                return () => window.removeEventListener('keydown', handler);
+        const handleKeydown = (e: KeyboardEvent) => {
+            if (e.code !== 'F8' || e.repeat) {
+                return;
             }
+
+            const target = e.target as HTMLElement | null;
+            const tag = target?.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) {
+                return;
+            }
+
+            e.preventDefault();
+            toggleRecording();
         };
-        setup();
-        return () => { if (unlisten) unlisten(); };
+
+        window.addEventListener('keydown', handleKeydown);
+        return () => {
+            window.removeEventListener('keydown', handleKeydown);
+        };
     }, [toggleRecording]);
 
     // ── Callback registration ──────────────────────────────────────────────
@@ -231,7 +427,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
     return (
         <VoiceContext.Provider value={{
-            isConnected, isRecording, isSpeaking,
+            isConnected, connectionStatus, connectionMessage, isRecording, isSpeaking,
             startRecording, stopRecording, toggleRecording,
             speakText, setSessionId, onTranscription, onToolConfirm,
         }}>

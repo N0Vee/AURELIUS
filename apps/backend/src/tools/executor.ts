@@ -13,8 +13,8 @@ import { isMcpTool, executeMcpTool } from '../mcp/executor.js';
 const execAsync = promisify(exec);
 
 // ── Windows PATH helper ───────────────────────────────────────────────────────
-// The backend sidecar inherits a stale PATH from Tauri (launched before Scoop
-// updated the user PATH). This helper reads User + Machine PATH directly from
+// Some Windows launch flows can inherit a stale PATH even after Scoop updates
+// the user environment. This helper reads User + Machine PATH directly from
 // the Windows registry so spawned processes always see the full PATH.
 
 let _cachedWindowsPath: string | null = null;

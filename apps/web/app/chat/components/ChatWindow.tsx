@@ -198,9 +198,7 @@ function StreamingCursor() {
     );
 }
 
-function ReasoningBlock({ text, isStreaming }: { text: string; isStreaming: boolean }) {
-    const [open, setOpen] = useState(false);
-
+function ReasoningBlock({ isStreaming }: { isStreaming: boolean }) {
     // Don't render anything for completed (non-streaming) reasoning —
     // it will be folded into the process strip by AssistantMessage.
     if (!isStreaming) return null;
@@ -434,10 +432,13 @@ function UserBubble({ message }: { message: UIMessage }) {
                     {images.length > 0 && (
                         <div className="flex flex-wrap gap-2 mt-2">
                             {images.map((url, i) => (
-                                <img
+                                <Image
                                     key={i}
                                     src={url}
                                     alt={`Attached ${i + 1}`}
+                                    width={320}
+                                    height={192}
+                                    unoptimized
                                     className="max-w-full max-h-48 rounded-lg border border-white/20 object-contain cursor-pointer hover:brightness-110 transition"
                                     onClick={() => window.open(url, '_blank')}
                                 />
@@ -555,7 +556,8 @@ function AssistantMessage({
                                     const output = typeof part.output === 'string'
                                         ? part.output
                                         : part.output != null ? JSON.stringify(part.output) : '';
-                                    toolSummaries.push({ name: displayName, state: st, output, errorText: (part as any).errorText });
+                                    const errorText = part.state === 'output-error' ? part.errorText : undefined;
+                                    toolSummaries.push({ name: displayName, state: st, output, errorText });
                                     processIdxs.add(idx);
                                 }
                             }
@@ -640,7 +642,6 @@ function AssistantMessage({
                                         return (
                                             <ReasoningBlock
                                                 key={`reasoning-${idx}`}
-                                                text={part.text}
                                                 isStreaming={part.state === 'streaming'}
                                             />
                                         );
