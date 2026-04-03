@@ -124,6 +124,7 @@ export const SettingsSchema = z.object({
         args: z.array(z.string()).optional(),
         url: z.string().optional(),
         env: z.record(z.string(), z.string()).optional(),
+        headers: z.record(z.string(), z.string()).optional(),
         enabled: z.boolean().default(true),
     })).default([]),
 });

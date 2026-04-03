@@ -3,9 +3,9 @@
  *
  * Strategy:
  *  - SAFE tools → server-side `execute` (auto-run inside `streamText`)
- *  - SENSITIVE / DANGEROUS tools → NO `execute` (the client handles
- *    confirmation via `addToolResult` after calling the `/v2/chat/tools/execute`
- *    REST endpoint).
+ *  - SENSITIVE / DANGEROUS tools → server-side `execute` +
+ *    `needsApproval: true` so the AI SDK emits approval-requested UI parts
+ *    before execution.
  */
 import { jsonSchema } from 'ai';
 import type { ToolSet } from 'ai';
@@ -44,10 +44,14 @@ export function getAITools(options?: {
                     executeTool(def.name, args),
             };
         } else {
-            // SENSITIVE / DANGEROUS → no execute; client must approve first
+            // SENSITIVE / DANGEROUS → execute on the server, but only after
+            // the client submits an approval response through the AI SDK flow.
             tools[def.name] = {
                 description: def.openAITool.function.description,
                 inputSchema: schema,
+                needsApproval: true,
+                execute: async (args: Record<string, unknown>) =>
+                    executeTool(def.name, args),
             };
         }
     }

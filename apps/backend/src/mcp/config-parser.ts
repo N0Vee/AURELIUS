@@ -2,20 +2,25 @@ import type { McpServerConfig } from './types.js';
 
 // ============================================================
 // External MCP Config Parser
-// Converts Windsurf/Cursor MCP JSON format to Aurelius format
+// Converts Windsurf/Cursor/OpenCode/Kilo MCP JSON format to Aurelius format
 // ============================================================
 
 interface ExternalMcpServer {
+  type?: 'remote' | 'local' | string;
   command?: string;
   args?: string[];
   env?: Record<string, string>;
-  // SSE transport (Windsurf/Cursor format)
+  // Remote transport (Windsurf/Cursor format)
   serverUrl?: string;
+  // Remote transport (OpenCode/Kilo format)
+  url?: string;
   headers?: Record<string, string>;
+  enabled?: boolean;
 }
 
 interface ExternalMcpConfig {
-  mcpServers: Record<string, ExternalMcpServer>;
+  mcpServers?: Record<string, ExternalMcpServer>;
+  mcp?: Record<string, ExternalMcpServer>;
 }
 
 export interface ParseResult {
@@ -24,7 +29,7 @@ export interface ParseResult {
 }
 
 /**
- * Parse external MCP config (Windsurf/Cursor format) into Aurelius format
+ * Parse external MCP config (Windsurf/Cursor/OpenCode/Kilo format) into Aurelius format
  */
 export function parseMcpConfig(json: unknown): ParseResult {
   const result: ParseResult = {
@@ -39,14 +44,15 @@ export function parseMcpConfig(json: unknown): ParseResult {
   }
 
   const config = json as Partial<ExternalMcpConfig>;
+  const servers = getExternalServers(config);
 
-  if (!config.mcpServers || typeof config.mcpServers !== 'object') {
-    result.errors.push('Invalid config: missing or invalid "mcpServers" object');
+  if (!servers) {
+    result.errors.push('Invalid config: missing or invalid "mcpServers" or "mcp" object');
     return result;
   }
 
   // Parse each server
-  for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
+  for (const [name, serverConfig] of Object.entries(servers)) {
     try {
       const parsed = parseServerConfig(name, serverConfig);
       if (parsed) {
@@ -61,6 +67,20 @@ export function parseMcpConfig(json: unknown): ParseResult {
   return result;
 }
 
+function getExternalServers(
+  config: Partial<ExternalMcpConfig>,
+): Record<string, ExternalMcpServer> | null {
+  if (config.mcpServers && typeof config.mcpServers === 'object') {
+    return config.mcpServers;
+  }
+
+  if (config.mcp && typeof config.mcp === 'object') {
+    return config.mcp;
+  }
+
+  return null;
+}
+
 /**
  * Parse a single server configuration
  */
@@ -71,40 +91,66 @@ function parseServerConfig(name: string, config: unknown): McpServerConfig | nul
 
   const server = config as ExternalMcpServer;
   const id = slugify(name);
+  const command = typeof server.command === 'string' && server.command.trim().length > 0
+    ? server.command.trim()
+    : undefined;
+  const remoteUrl = typeof server.serverUrl === 'string' && server.serverUrl.trim().length > 0
+    ? server.serverUrl.trim()
+    : typeof server.url === 'string' && server.url.trim().length > 0
+      ? server.url.trim()
+      : undefined;
 
   // Determine transport type
-  const hasCommand = typeof server.command === 'string' && server.command.length > 0;
-  const hasServerUrl = typeof server.serverUrl === 'string' && server.serverUrl.length > 0;
+  const hasCommand = Boolean(command);
+  const hasRemoteUrl = Boolean(remoteUrl);
 
-  if (!hasCommand && !hasServerUrl) {
-    throw new Error('Invalid server config: must have either "command" (stdio) or "serverUrl" (sse)');
+  if (!hasCommand && !hasRemoteUrl) {
+    throw new Error('Invalid server config: must have either "command" (stdio) or "serverUrl"/"url" (remote)');
   }
 
   // Build base config
   const baseConfig: Omit<McpServerConfig, 'transport' | 'command' | 'args' | 'url'> = {
     id,
     name,
-    enabled: true,
+    enabled: server.enabled ?? true,
     env: server.env || {},
+    headers: normalizeHeaders(server.headers),
   };
 
   // Parse based on transport type
-  if (hasServerUrl) {
-    // SSE transport
+  if (hasRemoteUrl) {
+    // Remote transport
     return {
       ...baseConfig,
       transport: 'sse',
-      url: server.serverUrl,
+      url: remoteUrl,
     };
   } else {
     // stdio transport
     return {
       ...baseConfig,
       transport: 'stdio',
-      command: server.command!,
+      command: command!,
       args: Array.isArray(server.args) ? server.args : [],
     };
   }
+}
+
+function normalizeHeaders(
+  headers: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!headers || typeof headers !== 'object') {
+    return undefined;
+  }
+
+  const entries = Object.entries(headers)
+    .filter(([key, value]) => key.trim().length > 0 && typeof value === 'string');
+
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  return Object.fromEntries(entries);
 }
 
 /**
@@ -135,5 +181,8 @@ export function formatMcpConfigForDisplay(json: unknown): string {
 export function isValidMcpConfig(json: unknown): boolean {
   if (!json || typeof json !== 'object') return false;
   const config = json as Partial<ExternalMcpConfig>;
-  return !!config.mcpServers && typeof config.mcpServers === 'object';
+  return Boolean(
+    (config.mcpServers && typeof config.mcpServers === 'object')
+    || (config.mcp && typeof config.mcp === 'object'),
+  );
 }

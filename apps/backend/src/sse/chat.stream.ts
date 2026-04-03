@@ -5,10 +5,10 @@
  * The frontend consumes this via `@ai-sdk/react` `useChat`.
  *
  * Key differences vs v1:
- *  - Multi-step tool calling is handled by `streamText({ maxSteps })` for SAFE tools.
- *  - SENSITIVE / DANGEROUS tools are sent to the client without execution;
- *    the client shows a confirmation UI, then calls `/v2/chat/tools/execute`
- *    to run the tool on the server, and feeds the result back via `addToolResult`.
+ *  - Multi-step tool calling is handled by `streamText({ maxSteps })`.
+ *  - SAFE tools execute immediately on the server.
+ *  - SENSITIVE / DANGEROUS tools use the AI SDK approval flow
+ *    (`needsApproval` -> `approval-requested` -> `approval-responded`).
  *  - The UIMessage stream protocol replaces custom SSE events
  *    (chunk, text_clear, text_break, tool_auto, tool_confirm, etc.).
  */
@@ -16,14 +16,15 @@ import { Elysia, t } from 'elysia';
 import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from 'ai';
 import { getModel } from '../llm/ai-provider';
 import { buildSystemPrompt } from '../llm/runtime-context';
+import { buildStepToolLoopSystemContext } from '../llm/tool-loop-guardrails';
 import { getAITools, getToolPermission, getAllToolMetadata } from '../tools/ai-tools';
-import { executeTool } from '../tools/executor';
 import { getActiveSkill } from '../skills/skills.store';
 import { searchMemories } from '../memory/memory.search';
 import { extractAndSaveMemories } from '../memory/memory.extractor';
 import { isBrowserConnected } from '../browser/bridge';
 import { CONSTANTS } from '../config/constants';
 import { getSettings } from '../config/settings.store';
+import { isToolResultFailure } from '../tools/tool-result';
 import type { ChatMessage } from '@aurelius/shared-schema';
 
 // ============================================================
@@ -223,6 +224,18 @@ export const chatStreamRoute = new Elysia({ prefix: '/v2/chat' })
                     temperature,
                     maxOutputTokens: settings.maxTokens,
 
+                    prepareStep: ({ steps }) => {
+                        const toolLoopContext = buildStepToolLoopSystemContext(steps);
+
+                        if (!toolLoopContext) {
+                            return undefined;
+                        }
+
+                        return {
+                            system: `${systemPrompt}\n\n${toolLoopContext}`,
+                        };
+                    },
+
                     providerOptions: {
                         openrouter: {
                             session_id: session_id ?? undefined,
@@ -231,13 +244,24 @@ export const chatStreamRoute = new Elysia({ prefix: '/v2/chat' })
                         },
                     },
 
-                    onStepFinish: ({ toolCalls }) => {
+                    onStepFinish: ({ stepNumber, toolCalls, toolResults, finishReason }) => {
+                        if (toolResults && toolResults.length > 0) {
+                            const summary = toolResults
+                                .map((result) => `${result.toolName}:${isToolResultFailure(result.output) ? 'failed' : 'success'}`)
+                                .join(', ');
+
+                            console.log(
+                                `[ChatStreamV2] Step ${stepNumber} finished (${finishReason}). Tool results: ${summary}`,
+                            );
+                            return;
+                        }
+
                         if (toolCalls && toolCalls.length > 0) {
                             const names = toolCalls
                                 .map((tc) => tc.toolName)
                                 .join(', ');
                             console.log(
-                                `[ChatStreamV2] Tool step done: ${names}`,
+                                `[ChatStreamV2] Step ${stepNumber} finished (${finishReason}). Tool calls: ${names}`,
                             );
                         }
                     },
@@ -306,50 +330,6 @@ export const chatStreamRoute = new Elysia({ prefix: '/v2/chat' })
                 session_id: t.Optional(t.String()),
                 session_title: t.Optional(t.String()),
                 voice_mode: t.Optional(t.Boolean()),
-            }),
-        },
-    )
-
-    // ── Tool execution endpoint (called by the client after user approves) ──
-    .post(
-        '/tools/execute',
-        async ({ body }) => {
-            const { name, args } = body as {
-                name: string;
-                args: Record<string, unknown>;
-            };
-
-            const permission = getToolPermission(name);
-
-            if (!permission) {
-                return {
-                    success: false,
-                    result: `Error: Tool "${name}" is not registered.`,
-                };
-            }
-
-            console.log(
-                `[ChatStreamV2] Executing approved tool: ${name} (${permission})`,
-                '| args:', JSON.stringify(args),
-            );
-
-            try {
-                const result = await executeTool(name, args);
-                return { success: true, result };
-            } catch (err) {
-                const msg =
-                    err instanceof Error ? err.message : String(err);
-                console.error(
-                    `[ChatStreamV2] Tool "${name}" execution error:`,
-                    msg,
-                );
-                return { success: false, result: `Error: ${msg}` };
-            }
-        },
-        {
-            body: t.Object({
-                name: t.String({ maxLength: 128 }),
-                args: t.Any(),
             }),
         },
     )

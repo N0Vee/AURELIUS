@@ -421,7 +421,7 @@ function ImportConfigForm({
                     Import MCP Config
                 </CardTitle>
                 <CardDescription>
-                    Paste JSON config from Windsurf, Cursor, or other MCP-compatible editors.
+                    Paste JSON config from OpenCode, Kilo, Windsurf, Cursor, or other MCP-compatible editors.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -430,7 +430,7 @@ function ImportConfigForm({
                         <textarea
                             value={jsonText}
                             onChange={(e) => setJsonText(e.target.value)}
-                            placeholder={`{\n  "mcpServers": {\n    "server-name": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-filesystem"]\n    }\n  }\n}`}
+                            placeholder={`{\n  "mcp": {\n    "context7": {\n      "type": "remote",\n      "url": "https://mcp.context7.com/mcp"\n    }\n  }\n}`}
                             className="w-full h-48 rounded-[var(--radius-md)] px-3 py-2.5 bg-[var(--surface)] border border-[var(--border)] text-[var(--text-primary)] font-mono text-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent resize-none transition-all"
                         />
 

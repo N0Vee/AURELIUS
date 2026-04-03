@@ -1,6 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { McpServerConfig, McpConnection, McpTool, McpResource, McpPrompt, McpServerCapabilities } from './types.js';
 
 // ============================================================
@@ -19,6 +20,7 @@ export async function createMcpClient(config: McpServerConfig): Promise<McpConne
 
     try {
         let transport;
+        let client: Client | null = null;
 
         if (config.transport === 'stdio') {
             if (!config.command) {
@@ -36,21 +38,35 @@ export async function createMcpClient(config: McpServerConfig): Promise<McpConne
                 args: config.args || [],
                 env: { ...envVars, ...config.env },
             });
+            client = createClient();
+            await client.connect(transport);
         } else if (config.transport === 'sse') {
             if (!config.url) {
                 throw new Error('sse transport requires a URL');
             }
-            transport = new SSEClientTransport(new URL(config.url));
+
+            const url = new URL(config.url);
+            const transportOptions = buildRemoteTransportOptions(config.headers);
+
+            try {
+                transport = new StreamableHTTPClientTransport(url, transportOptions);
+                client = createClient();
+                await client.connect(transport);
+                console.log(`[MCP] Connected to server: ${config.name} (streamable-http)`);
+            } catch (streamableError) {
+                console.warn(`[MCP] Streamable HTTP failed for ${config.name}, falling back to SSE:`, streamableError);
+                transport = new SSEClientTransport(url, transportOptions);
+                client = createClient();
+                await client.connect(transport);
+                console.log(`[MCP] Connected to server: ${config.name} (sse)`);
+            }
         } else {
             throw new Error(`Unsupported transport: ${config.transport}`);
         }
 
-        const client = new Client({
-            name: 'aurelius-mcp-client',
-            version: '0.1.0',
-        });
-
-        await client.connect(transport);
+        if (!client) {
+            throw new Error(`Failed to initialize MCP client for ${config.name}`);
+        }
 
         connection.client = client;
         connection.connected = true;
@@ -104,6 +120,25 @@ async function fetchServerInfo(connection: McpConnection): Promise<void> {
         // Prompts are optional
         connection.prompts = [];
     }
+}
+
+function createClient(): Client {
+    return new Client({
+        name: 'aurelius-mcp-client',
+        version: '0.1.0',
+    });
+}
+
+function buildRemoteTransportOptions(headers?: Record<string, string>) {
+    if (!headers || Object.keys(headers).length === 0) {
+        return undefined;
+    }
+
+    return {
+        requestInit: {
+            headers: new Headers(headers),
+        },
+    };
 }
 
 export async function disconnectMcpClient(connection: McpConnection): Promise<void> {

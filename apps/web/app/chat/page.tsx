@@ -9,18 +9,23 @@ import { useSessionTokens } from '@/hooks/useSessionTokens';
 import { useOpenRouterModels } from '@/hooks/useOpenRouterModels';
 import { ChatWindow } from './components/ChatWindow';
 import { SessionSidebar } from './components/SessionSidebar';
-import { VoiceVisual } from './components/VoiceVisual';
-import { SlashCommandMenu, buildDefaultCommands } from './components/SlashCommandMenu';
+import {
+    SlashCommandMenu,
+    SlashCommandResultCard,
+    buildDefaultCommands,
+    filterSlashCommands,
+    type SlashCommand,
+    type SlashCommandResult,
+} from './components/SlashCommandMenu';
 import { TokenUsageBar } from './components/TokenUsageBar';
 import { Button } from '@/components/ui';
-import { Send, Square, Trash2, MessageSquare, Mic, Monitor, ClipboardPaste, X } from 'lucide-react';
+import { Send, Square, Trash2, Mic, MicOff, Monitor, ClipboardPaste, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, isToolPart } from '@/lib/utils';
 import { getToolName } from 'ai';
 import { useVoice } from '@/components/VoiceProvider';
 import Image from 'next/image';
 
-type Mode = 'chat' | 'voice';
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const TEXT_EXTENSIONS = ['.txt', '.md', '.json', '.csv', '.ts', '.tsx', '.js', '.jsx', '.py', '.rs', '.toml', '.yaml', '.yml', '.html', '.css', '.xml', '.sh', '.ps1', '.bat', '.cfg', '.ini', '.log'];
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
@@ -28,17 +33,15 @@ const MAX_TEXT_SIZE = 100 * 1024;
 
 // ── Web title-bar ─────────────────────────────────────────────────────────────
 function WebTitleBar({
-    mode,
-    onModeChange,
     onClear,
     canClear,
     tokenBar,
+    voiceStatus,
 }: {
-    mode: Mode;
-    onModeChange: (m: Mode) => void;
     onClear: () => void;
     canClear: boolean;
     tokenBar?: React.ReactNode;
+    voiceStatus?: React.ReactNode;
 }) {
     return (
         <>
@@ -60,37 +63,11 @@ function WebTitleBar({
             </div>
 
             <header className="flex items-center justify-between px-3 py-2 sm:px-6 sm:py-4 border-b border-[var(--border)] shrink-0">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                     <h1 className="text-sm sm:text-lg font-semibold text-[var(--text-primary)]">
-                        {mode === 'chat' ? 'Chat Mode' : 'Voice Mode'}
+                        Chat
                     </h1>
-                    {/* Chat / Voice toggle */}
-                    <div className="flex items-center bg-[var(--surface)] border border-[var(--border)] rounded-full p-0.5">
-                        <button
-                            onClick={() => onModeChange('chat')}
-                            className={cn(
-                                'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all',
-                                mode === 'chat'
-                                    ? 'bg-[var(--accent)] text-white shadow-sm'
-                                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]',
-                            )}
-                        >
-                            <MessageSquare size={11} />
-                            Chat
-                        </button>
-                        <button
-                            onClick={() => onModeChange('voice')}
-                            className={cn(
-                                'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all',
-                                mode === 'voice'
-                                    ? 'bg-[var(--accent)] text-white shadow-sm'
-                                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]',
-                            )}
-                        >
-                            <Mic size={11} />
-                            Voice
-                        </button>
-                    </div>
+                    {voiceStatus}
                 </div>
                 <div className="flex items-center gap-3">
                     {tokenBar}
@@ -112,7 +89,6 @@ function WebTitleBar({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function ChatPage() {
-    const [mode, setMode] = useState<Mode>('chat');
     const [input, setInput] = useState('');
 
     // ── Session management ─────────────────────────────────────────────────
@@ -136,12 +112,25 @@ export default function ChatPage() {
         regenerate,
         stop,
         clearMessages,
-        executeAndApprove,
-        rejectTool,
+        approveToolCall,
+        rejectToolCall,
     } = useChat({
         sessionId:    activeSessionId,
         sessionTitle: activeSession?.title,
     });
+
+    const {
+        setSessionId: setVoiceSessionId,
+        speakText,
+        isConnected,
+        connectionStatus,
+        connectionMessage,
+        isRecording,
+        isSpeaking,
+        toggleRecording,
+        onTranscription,
+        onToolConfirm,
+    } = useVoice();
 
     // ── Settings (for model info in slash commands) ──────────────────────────
     const { settings } = useSettings();
@@ -160,93 +149,123 @@ export default function ChatPage() {
     // ── Slash commands ────────────────────────────────────────────────────────
     const [slashOpen, setSlashOpen] = useState(false);
     const [slashIndex, setSlashIndex] = useState(0);
-    const [slashToast, setSlashToast] = useState<string | null>(null);
+    const [slashResult, setSlashResult] = useState<SlashCommandResult | null>(null);
 
-    // Auto-clear toast after 3 s
-    useEffect(() => {
-        if (!slashToast) return;
-        const t = setTimeout(() => setSlashToast(null), 3000);
-        return () => clearTimeout(t);
-    }, [slashToast]);
+    const currentModelLabel = settings?.llmProvider === 'openrouter'
+        ? settings?.openrouterModel
+        : settings?.ollamaModel;
+
+    const voiceUnavailableReason = connectionMessage
+        ?? (connectionStatus === 'connecting' ? 'Audio engine is still starting.' : 'Audio is unavailable right now.');
 
     const slashCommands = useMemo(
         () =>
             buildDefaultCommands({
+                sessionTitle: activeSession?.title,
+                sessionCount: sessions.length,
+                recentSessionTitles: sessions.map((session) => session.title),
+                messageCount: messages.length,
+                totalTokens: sessionTokens.totalTokens,
+                promptTokens: sessionTokens.promptTokens,
+                completionTokens: sessionTokens.completionTokens,
+                providerLabel: settings?.llmProvider ?? 'unknown',
+                modelLabel: currentModelLabel,
+                contextLimit: activeModelContextLimit,
+                isVoiceConnected: isConnected,
+                isRecording,
+                voiceUnavailableReason,
                 clearMessages,
                 createSession,
-                toggleVoice: () => setMode((m) => (m === 'chat' ? 'voice' : 'chat')),
-                showModel: () => {
-                    const provider = settings?.llmProvider ?? 'unknown';
-                    const model =
-                        provider === 'openrouter'
-                            ? settings?.openrouterModel
-                            : settings?.ollamaModel;
-                    setSlashToast(`${provider}: ${model ?? 'not configured'}`);
-                },
+                toggleVoice: toggleRecording,
             }),
-        [clearMessages, createSession, settings],
+        [
+            activeModelContextLimit,
+            activeSession?.title,
+            clearMessages,
+            createSession,
+            currentModelLabel,
+            isConnected,
+            isRecording,
+            messages.length,
+            sessions,
+            sessionTokens.completionTokens,
+            sessionTokens.promptTokens,
+            sessionTokens.totalTokens,
+            settings?.llmProvider,
+            toggleRecording,
+            voiceUnavailableReason,
+        ],
     );
 
     const slashFilter = slashOpen ? input.slice(1).toLowerCase() : '';
 
     const filteredSlashCommands = useMemo(() => {
-        if (!slashFilter) return slashCommands;
-        return slashCommands.filter(
-            (c) =>
-                c.command.toLowerCase().includes(slashFilter) ||
-                c.label.toLowerCase().includes(slashFilter),
-        );
+        return filterSlashCommands(slashCommands, slashFilter);
     }, [slashFilter, slashCommands]);
 
-    // Reset index when filter changes
-    useEffect(() => {
-        setSlashIndex(0);
-    }, [slashFilter]);
-
     const handleSlashSelect = useCallback(
-        (cmd: typeof slashCommands[number]) => {
-            cmd.action();
-            setInput('');
+        async (cmd: SlashCommand) => {
+            try {
+                const execution = await cmd.execute();
+                setSlashResult(execution?.result ?? null);
+                setInput(execution?.nextInput ?? '');
+            } catch (error) {
+                setSlashResult({
+                    command: cmd.command,
+                    tone: 'error',
+                    title: `/${cmd.command} failed`,
+                    detail: error instanceof Error ? error.message : 'Unknown error.',
+                });
+                setInput('');
+            }
+
+            setSlashIndex(0);
             setSlashOpen(false);
+            requestAnimationFrame(() => textareaRef.current?.focus());
         },
         [],
     );
 
-    // Sync voice mode session with chat session
-    const { setSessionId: setVoiceSessionId, speakText } = useVoice();
+    const voiceTurnState = useRef({
+        lastInputSource: 'typed' as 'typed' | 'voice',
+        lastSpokenId: '',
+        spokeToolCallIds: new Set<string>(),
+    });
+
+    // Sync voice session with chat session and suppress TTS for loaded history.
     useEffect(() => {
         if (activeSessionId) {
             setVoiceSessionId(activeSessionId);
         }
+        voiceTurnState.current = {
+            lastInputSource: 'typed',
+            lastSpokenId: '',
+            spokeToolCallIds: new Set<string>(),
+        };
     }, [activeSessionId, setVoiceSessionId]);
 
     // TTS: speak responses and tool events in voice mode (v2 parts-based)
-    const lastSpokenId = useRef<string>('');
-    const spokeToolCallIds = useRef<Set<string>>(new Set());
-
-    // When switching TO voice mode, mark the current last message as already
-    // spoken so we don't re-read messages that were shown in chat mode.
     useEffect(() => {
-        if (mode === 'voice') {
-            const last = messages[messages.length - 1];
-            if (last) lastSpokenId.current = last.id;
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mode]);
+        onTranscription((text: string) => {
+            if (!text.trim()) return;
+            voiceTurnState.current.lastInputSource = 'voice';
+            void sendMessage(text, undefined, { voiceMode: true });
+        });
+    }, [onTranscription, sendMessage]);
 
     useEffect(() => {
-        if (mode !== 'voice') return;
+        if (voiceTurnState.current.lastInputSource !== 'voice') return;
 
-        // Scan for pending tool invocations (needs approval) in the latest assistant message
+        // Scan for pending approval requests in the latest assistant message.
         const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
         if (lastAssistant?.parts) {
             for (const part of lastAssistant.parts) {
                 if (
                     isToolPart(part) &&
-                    (part.state === 'input-available') &&
-                    !spokeToolCallIds.current.has(part.toolCallId)
+                    part.state === 'approval-requested' &&
+                    !voiceTurnState.current.spokeToolCallIds.has(part.toolCallId)
                 ) {
-                    spokeToolCallIds.current.add(part.toolCallId);
+                    voiceTurnState.current.spokeToolCallIds.add(part.toolCallId);
                     const name = getToolName(part).replace(/_/g, ' ');
                     speakText(`${name}. Should I proceed?`);
                     return;
@@ -255,11 +274,11 @@ export default function ChatPage() {
         }
 
         const last = messages[messages.length - 1];
-        if (!last || last.id === lastSpokenId.current) return;
+        if (!last || last.id === voiceTurnState.current.lastSpokenId) return;
 
         // Only speak completed assistant messages (not while still streaming)
         if (last.role === 'assistant' && status === 'ready') {
-            lastSpokenId.current = last.id;
+            voiceTurnState.current.lastSpokenId = last.id;
 
             // Gather text from parts (guard for v1 messages without parts)
             const fullText = (last.parts ?? [])
@@ -315,23 +334,48 @@ export default function ChatPage() {
 
             if (tts) speakText(tts);
         }
-    }, [messages, mode, status, speakText]);
+    }, [messages, status, speakText]);
 
     // Find pending tool call for voice mode approval/reject
     const pendingToolCall = (() => {
         const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
         if (!lastAssistant?.parts) return null;
         for (const part of lastAssistant.parts) {
-            if (isToolPart(part) && part.state === 'input-available') {
+            if (isToolPart(part) && part.state === 'approval-requested') {
                 return { ...part, toolName: getToolName(part) };
             }
         }
         return null;
     })();
-    const pendingConfirmId = pendingToolCall?.toolCallId ?? null;
+
+    useEffect(() => {
+        onToolConfirm((approved: boolean) => {
+            if (!pendingToolCall) return;
+
+            if (approved) {
+                void approveToolCall(
+                    pendingToolCall.toolCallId,
+                    pendingToolCall.toolName,
+                );
+                return;
+            }
+
+            void rejectToolCall(
+                pendingToolCall.toolCallId,
+                pendingToolCall.toolName,
+            );
+        });
+    }, [onToolConfirm, pendingToolCall, approveToolCall, rejectToolCall]);
 
     const { pendingImage, captureScreen, pasteFromClipboard, clearPendingImage } = useScreenCapture();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    const handleQuickPrompt = useCallback((prompt: string) => {
+        setInput(prompt);
+        setSlashOpen(false);
+        setSlashIndex(0);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+    }, []);
 
     // ── Drag & drop file attachments ──────────────────────────────────────────
     interface PendingFile {
@@ -418,14 +462,6 @@ export default function ChatPage() {
         }
     }, [addDroppedFiles]);
 
-    // ── Auto-resize textarea ──────────────────────────────────────────────────
-    useEffect(() => {
-        if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-            textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
-        }
-    }, [input]);
-
     const handleSubmit = (e: FormEvent | React.KeyboardEvent) => {
         e.preventDefault();
         const hasImages = pendingImage || pendingFiles.some((f) => f.preview);
@@ -456,13 +492,11 @@ export default function ChatPage() {
                 text = 'What do you see in this image?';
             }
 
-            sendMessage(text, images.length > 0 ? images : undefined);
+            voiceTurnState.current.lastInputSource = 'typed';
+            void sendMessage(text, images.length > 0 ? images : undefined, { voiceMode: false });
             setInput('');
             clearPendingImage();
             setPendingFiles([]);
-            if (textareaRef.current) {
-                textareaRef.current.style.height = 'auto';
-            }
         }
     };
 
@@ -480,6 +514,18 @@ export default function ChatPage() {
     }, [pasteFromClipboard]);
 
     const scrollPb = 'pb-40 sm:pb-56';
+
+    const voiceStatusText = !isConnected
+        ? (connectionMessage ?? (connectionStatus === 'connecting' ? 'Starting audio...' : 'Audio unavailable'))
+        : isRecording
+            ? (isSpeaking ? 'Listening...' : 'Recording...')
+            : 'Voice ready';
+
+    const voiceStatusTone = !isConnected
+        ? (connectionStatus === 'disconnected' ? 'text-[var(--dangerous)] border-[var(--dangerous)]/30 bg-[var(--dangerous-glow)]' : 'text-[var(--text-muted)] border-[var(--border)] bg-[var(--surface)]')
+        : isRecording
+            ? 'text-white border-transparent bg-[var(--accent)]'
+            : 'text-[var(--accent)] border-[var(--accent)]/25 bg-[var(--accent)]/10';
 
     return (
         <div className="flex h-screen">
@@ -521,10 +567,17 @@ export default function ChatPage() {
             </AnimatePresence>
 
             <WebTitleBar
-                mode={mode}
-                onModeChange={setMode}
                 onClear={clearMessages}
                 canClear={messages.length > 0}
+                voiceStatus={
+                    <div className={cn(
+                        'hidden sm:flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium',
+                        voiceStatusTone,
+                    )}>
+                        {isRecording ? <MicOff size={12} /> : <Mic size={12} />}
+                        <span className="truncate max-w-[180px]">{voiceStatusText}</span>
+                    </div>
+                }
                 tokenBar={
                     <TokenUsageBar
                         totalTokens={sessionTokens.totalTokens}
@@ -538,93 +591,56 @@ export default function ChatPage() {
             />
 
             {/* ── Main content ───────────────────────────────────────────── */}
-            <AnimatePresence mode="wait">
-                {mode === 'chat' ? (
-                    <motion.div
-                        key="chat"
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20 }}
-                        transition={{ duration: 0.2 }}
-                        className={cn('flex-1 min-h-0 overflow-y-auto', scrollPb)}
-                    >
-                        <ChatWindow
-                            messages={messages}
-                            status={status}
-                            error={chatError}
-                            onApprove={executeAndApprove}
-                            onReject={(toolCallId, toolName) => rejectTool(toolCallId, toolName)}
-                            onRetry={regenerate}
-                        />
-                    </motion.div>
-                ) : (
-                    <motion.div
-                        key="voice"
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 20 }}
-                        transition={{ duration: 0.2 }}
-                        className="flex-1 min-h-0"
-                    >
-                        <VoiceVisual
-                            messages={messages}
-                            isStreaming={isLoading}
-                            onSend={sendMessage}
-                            onApprove={() => {
-                                if (pendingToolCall) {
-                                    executeAndApprove(
-                                        pendingToolCall.toolCallId,
-                                        pendingToolCall.toolName,
-                                        (pendingToolCall.input ?? {}) as Record<string, unknown>,
-                                    );
-                                }
-                            }}
-                            onReject={() => {
-                                if (pendingToolCall) {
-                                    rejectTool(pendingToolCall.toolCallId, pendingToolCall.toolName);
-                                }
-                            }}
-                            pendingConfirmId={pendingConfirmId}
-                        />
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+                className={cn('flex-1 min-h-0 overflow-y-auto', scrollPb)}
+            >
+                <ChatWindow
+                    messages={messages}
+                    status={status}
+                    error={chatError}
+                    onApprove={approveToolCall}
+                    onReject={rejectToolCall}
+                    onRetry={regenerate}
+                    onQuickPrompt={handleQuickPrompt}
+                />
+            </motion.div>
 
             {/* ── Floating input (chat mode) ──────────────────────────────── */}
             <AnimatePresence>
-                {mode === 'chat' && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 20 }}
-                        className="fixed bottom-20 left-0 right-0 px-3 pointer-events-none sm:bottom-24 sm:left-[29rem] sm:px-6"
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    className="fixed bottom-20 left-0 right-0 px-3 pointer-events-none sm:bottom-24 sm:left-[29rem] sm:px-6"
+                >
+
+                    <div
+                        className="mx-auto max-w-full pointer-events-auto sm:max-w-3xl"
                     >
-
-                        <div
-                            className="mx-auto max-w-full pointer-events-auto sm:max-w-3xl"
+                        <form
+                            onSubmit={handleSubmit}
+                            className="glass-strong relative rounded-2xl p-3 shadow-2xl sm:p-4"
                         >
-                            <form
-                                onSubmit={handleSubmit}
-                                className="glass-strong relative rounded-2xl p-3 shadow-2xl sm:p-4"
-                            >
-                                {/* ── Slash command menu ───────────────────── */}
-                                {slashOpen && filteredSlashCommands.length > 0 && (
-                                    <SlashCommandMenu
-                                        filter={slashFilter}
-                                        commands={filteredSlashCommands}
-                                        onSelect={handleSlashSelect}
-                                        selectedIndex={slashIndex}
-                                    />
-                                )}
+                                <div className="absolute bottom-full left-0 right-0 mb-2 z-50 flex flex-col gap-2">
+                                    {slashOpen && (
+                                        <SlashCommandMenu
+                                            query={slashFilter}
+                                            commands={filteredSlashCommands}
+                                            onSelect={handleSlashSelect}
+                                            selectedIndex={Math.min(slashIndex, Math.max(filteredSlashCommands.length - 1, 0))}
+                                        />
+                                    )}
 
-                                {/* ── Slash toast (ephemeral info) ─────────── */}
-                                {slashToast && (
-                                    <div className="absolute bottom-full left-0 right-0 mb-2 flex justify-center pointer-events-none z-50">
-                                        <div className="px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-xs text-[var(--text-secondary)] shadow-lg animate-in fade-in slide-in-from-bottom-2">
-                                            {slashToast}
-                                        </div>
-                                    </div>
-                                )}
+                                    {!slashOpen && slashResult && (
+                                        <SlashCommandResultCard
+                                            result={slashResult}
+                                            onDismiss={() => setSlashResult(null)}
+                                        />
+                                    )}
+                                </div>
 
                                 {/* ── Image preview ────────────────────────── */}
                                 {pendingImage && (
@@ -688,12 +704,15 @@ export default function ChatPage() {
                                     </div>
                                 )}
 
+                
+
                                 <textarea
                                     ref={textareaRef}
                                     value={input}
                                     onChange={(e) => {
                                         const val = e.target.value;
                                         setInput(val);
+                                        setSlashIndex(0);
                                         // Open slash menu when input starts with / and has no spaces yet
                                         if (val.startsWith('/') && !val.includes(' ')) {
                                             setSlashOpen(true);
@@ -733,10 +752,10 @@ export default function ChatPage() {
                                     placeholder={pendingImage ? 'Ask about this screenshot...' : 'Type / for commands...'}
                                     disabled={isLoading}
                                     rows={1}
-                                    className="w-full bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none focus:outline-none text-sm sm:text-base leading-relaxed"
+                                    className="w-full max-h-[120px] overflow-y-auto resize-none bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none text-sm sm:text-base leading-relaxed [field-sizing:content]"
                                 />
                                 <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border)]">
-                                    <div className="flex items-center gap-1">
+                                    <div className="flex items-center gap-1 flex-wrap">
                                         {/* Screen capture */}
                                         <Button
                                             type="button"
@@ -763,6 +782,19 @@ export default function ChatPage() {
                                         </Button>
                                     </div>
                                     <div className="flex items-center gap-2 ml-auto">
+                                        <button
+                                            type="button"
+                                            onClick={toggleRecording}
+                                            disabled={!isConnected}
+                                            title={voiceStatusText}
+                                            aria-label={voiceStatusText}
+                                            className={cn(
+                                                'inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+                                                voiceStatusTone,
+                                            )}
+                                        >
+                                            {isRecording ? <MicOff size={15} /> : <Mic size={15} />}
+                                        </button>
                                         {isLoading ? (
                                             <Button
                                                 type="button"
@@ -785,10 +817,9 @@ export default function ChatPage() {
                                         )}
                                     </div>
                                 </div>
-                            </form>
-                        </div>
-                    </motion.div>
-                )}
+                        </form>
+                    </div>
+                </motion.div>
             </AnimatePresence>
 
             </div>{/* end chat column */}

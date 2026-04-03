@@ -6,10 +6,12 @@
  * Wraps `@ai-sdk/react` `useChat` with Aurelius-specific behaviours:
  *  - IndexedDB persistence (Dexie) for messages and sessions
  *  - Backend fallback URLs (127.0.0.1 → localhost)
- *  - Server-side tool execution for SENSITIVE / DANGEROUS tools
- *    via a REST round-trip + `addToolOutput`
- *  - Auto-send after all client-handled tool calls are resolved,
- *    including explicit denials in the custom approval flow
+ *  - AI SDK approval handling for SENSITIVE / DANGEROUS tools via
+ *    `approval-requested` / `addToolApprovalResponse`
+ *  - IndexedDB migration for stale pre-approval `input-available` tool calls,
+ *    rewriting them to `output-denied` so later sends stay valid
+ *  - Auto-send after all client-handled tool calls or approval responses
+ *    are resolved, including explicit denials
  *  - Assistant-message resync after tool state changes so persisted
  *    sessions do not reload stale approval-requested tool calls
  */
@@ -19,6 +21,7 @@ import {
     DefaultChatTransport,
     isToolUIPart,
     jsonSchema,
+    lastAssistantMessageIsCompleteWithApprovalResponses,
     type UIMessage,
 } from 'ai';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -62,7 +65,6 @@ const API_BASES = [
 ];
 
 const V2_STREAM_PATH = '/v2/chat/stream';
-const V2_EXECUTE_PATH = '/v2/chat/tools/execute';
 
 // Monotonically increasing counter to keep message insertion order
 // within the same millisecond (user + assistant saved nearly together).
@@ -78,6 +80,10 @@ interface UseChatOptions {
     voiceMode?: boolean;
 }
 
+interface SendMessageOptions {
+    voiceMode?: boolean;
+}
+
 function serializeMessageRow(message: UIMessage, sessionId: string, timestamp: number): PersistedMessage {
     return {
         id: message.id,
@@ -87,27 +93,35 @@ function serializeMessageRow(message: UIMessage, sessionId: string, timestamp: n
     };
 }
 
-function lastAssistantMessageHasCompletedToolResults(messages: UIMessage[]): boolean {
-    const message = messages[messages.length - 1];
-    if (!message || message.role !== 'assistant') {
-        return false;
+function findLatestToolPart(messages: UIMessage[], toolCallId: string) {
+    for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+        const message = messages[messageIndex];
+        if (!Array.isArray(message.parts)) continue;
+
+        for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex -= 1) {
+            const part = message.parts[partIndex];
+            if (isToolUIPart(part) && part.toolCallId === toolCallId) {
+                return part;
+            }
+        }
     }
 
-    const lastStepStartIndex = message.parts.reduce((lastIndex, part, index) => {
-        return part.type === 'step-start' ? index : lastIndex;
-    }, -1);
+    return null;
+}
 
-    const lastStepToolInvocations = message.parts
-        .slice(lastStepStartIndex + 1)
-        .filter(isToolUIPart)
-        .filter((part) => !part.providerExecuted);
+function getApprovalId(part: ReturnType<typeof findLatestToolPart>): string | null {
+    if (
+        part?.state === 'approval-requested'
+        && 'approval' in part
+        && typeof part.approval === 'object'
+        && part.approval !== null
+        && 'id' in part.approval
+        && typeof part.approval.id === 'string'
+    ) {
+        return part.approval.id;
+    }
 
-    return lastStepToolInvocations.length > 0 && lastStepToolInvocations.every(
-        (part) =>
-            part.state === 'output-available'
-            || part.state === 'output-error'
-            || part.state === 'output-denied',
-    );
+    return null;
 }
 
 export function useChat(options: UseChatOptions = {}) {
@@ -146,7 +160,12 @@ export function useChat(options: UseChatOptions = {}) {
 
     // ── Transport (created once) ──────────────────────────────────────────
     const customFetch = async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        for (const base of API_BASES) {
+        const bases = [
+            apiBaseRef.current,
+            ...API_BASES.filter((base) => base !== apiBaseRef.current),
+        ];
+
+        for (const base of bases) {
             try {
                 const url = `${base}${V2_STREAM_PATH}`;
                 const res = await globalThis.fetch(url, init);
@@ -181,14 +200,9 @@ export function useChat(options: UseChatOptions = {}) {
         transport,
         messageMetadataSchema: chatMetadataSchema,
 
-        // Client-handled tools (without server execute) arrive here.
-        // Return undefined → tool stays pending for manual approve / reject.
-        onToolCall: async () => undefined,
-
-        // Auto-send when all client-handled tool invocations in the last message
-        // have been resolved, including explicit user denials.
-        sendAutomaticallyWhen: ({ messages }) =>
-            lastAssistantMessageHasCompletedToolResults(messages),
+        // Continue automatically once the user has responded to all pending
+        // approval requests in the last assistant message.
+        sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
 
         onFinish: async ({ message }) => {
             const sid = sessionIdRef.current;
@@ -229,6 +243,12 @@ export function useChat(options: UseChatOptions = {}) {
     });
     const { addToolOutput } = chat;
 
+    const messagesRef = useRef<UIMessage[]>(chat.messages);
+
+    useEffect(() => {
+        messagesRef.current = chat.messages;
+    }, [chat.messages]);
+
     // ── Load messages from IndexedDB on session switch ────────────────────
     useEffect(() => {
         // Capture the session ID at effect start so we can check for staleness
@@ -266,6 +286,16 @@ export function useChat(options: UseChatOptions = {}) {
 
                     if (Array.isArray(raw.parts)) {
                         raw.parts = raw.parts.map((part: Record<string, unknown>) => {
+                            if (
+                                part.state === 'input-available'
+                                && (part as { providerExecuted?: boolean }).providerExecuted !== true
+                            ) {
+                                return {
+                                    ...part,
+                                    state: 'output-denied',
+                                };
+                            }
+
                             if (
                                 part.state === 'approval-responded'
                                 && typeof part.approval === 'object'
@@ -375,47 +405,60 @@ export function useChat(options: UseChatOptions = {}) {
         return () => clearTimeout(timer);
     }, [chat.messages, sessionId, dbLoaded, getMessageTimestamp]);
 
-    // ── Execute a tool on the server and feed output back ─────────────────
-    const executeAndApprove = useCallback(
-        async (
-            toolCallId: string,
-            toolName: string,
-            args: Record<string, unknown>,
-        ) => {
-            try {
-                const res = await globalThis.fetch(
-                    `${apiBaseRef.current}${V2_EXECUTE_PATH}`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name: toolName, args }),
-                    },
-                );
+    // ── Approve a tool call ───────────────────────────────────────────────
+    const approveToolCall = useCallback(
+        async (toolCallId: string, toolName: string) => {
+            const part = findLatestToolPart(messagesRef.current, toolCallId);
+            const approvalId = getApprovalId(part);
 
-                if (!res.ok) throw new Error(`Execute failed: ${res.status}`);
-                const { result } = await res.json();
+            if (approvalId) {
+                const wasStreaming = chat.status === 'streaming' || chat.status === 'submitted';
 
-                addToolOutput({
-                    toolCallId,
-                    tool: toolName as never,
-                    output: result,
+                await chat.addToolApprovalResponse({
+                    id: approvalId,
+                    approved: true,
                 });
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : 'Unknown error';
-                addToolOutput({
-                    toolCallId,
-                    tool: toolName as never,
-                    state: 'output-error',
-                    errorText: `Error: ${msg}`,
-                });
+
+                // When the approval arrives before the previous response fully
+                // closes, stop that tail so the SDK can continue immediately.
+                if (wasStreaming) {
+                    await chat.stop();
+                }
+
+                return;
             }
+
+            addToolOutput({
+                toolCallId,
+                tool: toolName as never,
+                state: 'output-error',
+                errorText: 'Tool approval is no longer valid. Ask the assistant to try again.',
+            });
         },
-        [addToolOutput],
+        [addToolOutput, chat],
     );
 
     // ── Reject a tool ─────────────────────────────────────────────────────
-    const rejectTool = useCallback(
-        (toolCallId: string, toolName: string) => {
+    const rejectToolCall = useCallback(
+        async (toolCallId: string, toolName: string) => {
+            const part = findLatestToolPart(messagesRef.current, toolCallId);
+            const approvalId = getApprovalId(part);
+
+            if (approvalId) {
+                const wasStreaming = chat.status === 'streaming' || chat.status === 'submitted';
+
+                await chat.addToolApprovalResponse({
+                    id: approvalId,
+                    approved: false,
+                });
+
+                if (wasStreaming) {
+                    await chat.stop();
+                }
+
+                return;
+            }
+
             const addDeniedToolOutput = addToolOutput as unknown as (args: {
                 toolCallId: string;
                 tool: never;
@@ -428,13 +471,17 @@ export function useChat(options: UseChatOptions = {}) {
                 state: 'output-denied',
             });
         },
-        [addToolOutput],
+        [addToolOutput, chat],
     );
 
     // ── Send a text message with optional image attachments ──────────────
     const sendMessage = useCallback(
-        async (content: string, images?: string[]) => {
+        async (content: string, images?: string[], options?: SendMessageOptions) => {
             if (!content.trim() && (!images || images.length === 0)) return;
+
+            if (typeof options?.voiceMode === 'boolean') {
+                voiceModeRef.current = options.voiceMode;
+            }
 
             const text = content.trim();
 
@@ -501,9 +548,9 @@ export function useChat(options: UseChatOptions = {}) {
         clearMessages,
         setMessages: chat.setMessages,
 
-        /** Execute a SENSITIVE/DANGEROUS tool on the server after user approval */
-        executeAndApprove,
+        /** Approve a pending tool call */
+        approveToolCall,
         /** Reject a pending tool call */
-        rejectTool,
+        rejectToolCall,
     };
 }

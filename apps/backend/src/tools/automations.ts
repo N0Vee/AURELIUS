@@ -3,6 +3,7 @@ import { mkdirSync } from 'fs';
 import type { ToolDefinition } from './registry';
 import type { OpenAITool, OpenAIToolParameter } from '../llm/types';
 import { executeTool } from './executor';
+import { isToolResultFailure, stripToolResultPrefix } from './tool-result';
 
 // ============================================================
 // Data Model
@@ -44,7 +45,7 @@ export type UpdateAutomationInput = Partial<Omit<CustomAutomation, 'id' | 'creat
 
 // ── Step Execution Result ──────────────────────────────────
 
-interface StepResult {
+export interface StepResult {
     stepId: string;
     toolName: string;
     label: string;
@@ -199,9 +200,10 @@ function buildToolDefinition(automation: CustomAutomation): ToolDefinition {
  *
  * Supported patterns:
  *   {{input.paramName}}        → value from inputArgs
- *   {{steps.stepId.result}}    → result string from a previous step
+ *   {{steps.stepId.result}}    → result string from a previous step with
+ *                                 [SUCCESS]/[FAILED] removed for safe chaining
  */
-function resolveTemplateArgs(
+export function resolveTemplateArgs(
     args: Record<string, string>,
     inputArgs: Record<string, unknown>,
     stepResults: Map<string, StepResult>,
@@ -254,7 +256,7 @@ function lookupTemplateRef(
             const stepId = parts[0];
             const field = parts[1]; // currently only 'result' is supported
             const sr = stepResults.get(stepId);
-            if (sr && field === 'result') return sr.result;
+            if (sr && field === 'result') return stripToolResultPrefix(sr.result);
         }
     }
 
@@ -458,8 +460,10 @@ export async function executeAutomation(
 
         try {
             result = await executeTool(step.toolName, resolvedArgs);
-            success = true;
-            console.log(`[Automations]   ✔ Step "${step.label}" succeeded`);
+            success = !isToolResultFailure(result);
+            console.log(
+                `[Automations]   ${success ? '✔' : '✘'} Step "${step.label}" ${success ? 'succeeded' : 'failed'}`,
+            );
         } catch (err) {
             result = err instanceof Error ? err.message : String(err);
             success = false;
@@ -560,8 +564,10 @@ export async function* streamAutomationSteps(
 
         try {
             result = await executeTool(step.toolName, resolvedArgs);
-            success = true;
-            console.log(`[Automations]   ✔ Step "${step.label}" succeeded`);
+            success = !isToolResultFailure(result);
+            console.log(
+                `[Automations]   ${success ? '✔' : '✘'} Step "${step.label}" ${success ? 'succeeded' : 'failed'}`,
+            );
         } catch (err) {
             result = err instanceof Error ? err.message : String(err);
             success = false;

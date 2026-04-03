@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { resolveBackendApiBase } from '@/lib/backend-api';
 
 // ============================================================
 // Types  (matches https://openrouter.ai/api/v1/models response)
@@ -49,35 +50,9 @@ export function formatContextLength(ctx: number | undefined): string | null {
     return String(ctx);
 }
 
-// ============================================================
-// API base resolution  (mirrors useSettings.ts)
-// ============================================================
-
-const API_BASE_CANDIDATES = [
-    'http://127.0.0.1:4243',
-    'http://localhost:4243',
-];
-
-async function resolveModelsEndpoint(): Promise<string> {
-    for (const base of API_BASE_CANDIDATES) {
-        try {
-            const controller = new AbortController();
-            const tid = window.setTimeout(() => controller.abort(), 2000);
-            try {
-                const res = await fetch(`${base}/health`, {
-                    method: 'GET',
-                    cache: 'no-store',
-                    signal: controller.signal,
-                });
-                if (res.ok) return `${base}/api/settings/openrouter-models`;
-            } finally {
-                window.clearTimeout(tid);
-            }
-        } catch {
-            // try next candidate
-        }
-    }
-    return `${API_BASE_CANDIDATES[0]}/api/settings/openrouter-models`;
+async function resolveModelsEndpoint(forceRefresh = false): Promise<string> {
+    const base = await resolveBackendApiBase(forceRefresh);
+    return `${base}/api/settings/openrouter-models`;
 }
 
 // ============================================================

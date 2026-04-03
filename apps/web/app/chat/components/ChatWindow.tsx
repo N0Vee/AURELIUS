@@ -12,6 +12,10 @@ import {
     RefreshCw,
     ChevronDown,
     X,
+    Clock3,
+    Code2,
+    AppWindow,
+    type LucideIcon,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -19,7 +23,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import Image from 'next/image';
-import { cn, isToolPart } from '@/lib/utils';
+import { cn, formatToolOutput, isFailedToolOutput, isToolPart } from '@/lib/utils';
 import { getToolName } from 'ai';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -28,10 +32,33 @@ interface ChatWindowProps {
     messages: UIMessage[];
     status: 'submitted' | 'streaming' | 'ready' | 'error';
     error?: Error;
-    onApprove: (toolCallId: string, toolName: string, args: Record<string, unknown>) => void;
+    onApprove: (toolCallId: string, toolName: string) => void;
     onReject: (toolCallId: string, toolName: string) => void;
     onRetry?: () => void;
+    onQuickPrompt?: (prompt: string) => void;
 }
+
+const EMPTY_STATE_PROMPTS: Array<{
+    label: string;
+    prompt: string;
+    Icon: LucideIcon;
+}> = [
+    {
+        label: 'What time is it?',
+        prompt: 'What time is it?',
+        Icon: Clock3,
+    },
+    {
+        label: 'Help me with code',
+        prompt: 'Help me with code',
+        Icon: Code2,
+    },
+    {
+        label: 'Open Notepad',
+        prompt: 'Open Notepad',
+        Icon: AppWindow,
+    },
+];
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
@@ -466,7 +493,7 @@ function AssistantMessage({
     isLast: boolean;
     isActive: boolean;
     toolMeta: Record<string, ToolMeta>;
-    onApprove: (toolCallId: string, toolName: string, args: Record<string, unknown>) => void;
+    onApprove: (toolCallId: string, toolName: string) => void;
     onReject: (toolCallId: string, toolName: string) => void;
     onRetry?: () => void;
 }) {
@@ -553,11 +580,20 @@ function AssistantMessage({
                                     const tn = getToolName(part);
                                     const meta = toolMeta[tn];
                                     const displayName = meta?.displayName ?? formatToolName(tn);
-                                    const output = typeof part.output === 'string'
-                                        ? part.output
-                                        : part.output != null ? JSON.stringify(part.output) : '';
-                                    const errorText = part.state === 'output-error' ? part.errorText : undefined;
-                                    toolSummaries.push({ name: displayName, state: st, output, errorText });
+                                    const output = formatToolOutput(part.output);
+                                    const derivedError = st === 'output-available' && isFailedToolOutput(part.output);
+                                    const errorText = part.state === 'output-error'
+                                        ? part.errorText
+                                        : derivedError
+                                            ? output
+                                            : undefined;
+
+                                    toolSummaries.push({
+                                        name: displayName,
+                                        state: derivedError ? 'output-error' : st,
+                                        output,
+                                        errorText,
+                                    });
                                     processIdxs.add(idx);
                                 }
                             }
@@ -697,29 +733,58 @@ function AssistantMessage({
 
 // ── Empty state ───────────────────────────────────────────────────────────────
 
-function EmptyState() {
+function EmptyState({ onQuickPrompt }: { onQuickPrompt?: (prompt: string) => void }) {
     return (
-        <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="glass-strong rounded-full p-4 sm:p-6 mb-4 sm:mb-6">
-                <MessageSquare size={28} className="text-[var(--accent)] sm:hidden" />
-                <MessageSquare size={40} className="text-[var(--accent)] hidden sm:block" />
-            </div>
-            <h2 className="text-lg sm:text-2xl font-semibold text-[var(--text-primary)] mb-2">
-                Start a Conversation
-            </h2>
-            <p className="text-sm sm:text-base text-[var(--text-secondary)] max-w-md mb-4 sm:mb-6 px-2 sm:px-0">
-                Aurelius is ready to assist. Ask questions, get help with code, or control your system.
-            </p>
-            <div className="flex flex-wrap gap-1.5 sm:gap-2 justify-center max-w-full sm:max-w-lg px-2 sm:px-0">
-                {['What time is it?', 'Help me with code', 'Open Notepad'].map((suggestion) => (
-                    <button
-                        key={suggestion}
-                        className="glass-strong px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-all"
-                    >
-                        {suggestion}
-                    </button>
-                ))}
-            </div>
+        <div className="flex min-h-full items-center justify-center px-1 py-6 sm:px-4 sm:py-10">
+            <motion.div
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.22, ease: 'easeOut' }}
+                className="relative w-full max-w-2xl rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(20,20,20,0.94),rgba(10,10,10,0.98))] px-5 py-8 text-center shadow-[0_18px_70px_rgba(0,0,0,0.35)] sm:px-8 sm:py-10"
+            >
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(245,158,11,0.16),transparent_38%)]" />
+
+                <div className="relative flex flex-col items-center">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)]/20 bg-[var(--accent)]/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.26em] text-[var(--accent-secondary)]">
+                        Aurelius
+                    </div>
+
+                    <div className="relative mt-5 flex h-18 w-18 items-center justify-center rounded-[22px] border border-[var(--accent)]/20 bg-[linear-gradient(180deg,rgba(245,158,11,0.18),rgba(245,158,11,0.04))] shadow-[0_0_50px_rgba(245,158,11,0.12)] sm:h-20 sm:w-20">
+                        <div className="absolute inset-2 rounded-[16px] border border-white/8" />
+                        <MessageSquare size={30} className="text-[var(--accent)]" />
+                    </div>
+
+                    <h2 className="mt-6 max-w-xl text-2xl font-semibold tracking-[-0.04em] text-[var(--text-primary)] sm:text-3xl">
+                        Start a conversation
+                    </h2>
+
+                    <p className="mt-3 max-w-lg text-sm leading-7 text-[var(--text-secondary)] sm:text-base">
+                        Ask a question, use a local tool, or work through code without switching contexts.
+                    </p>
+
+                    <div className="mt-6 grid w-full gap-3 sm:grid-cols-3">
+                        {EMPTY_STATE_PROMPTS.map(({ label, prompt, Icon }) => (
+                            <button
+                                key={label}
+                                type="button"
+                                onClick={() => onQuickPrompt?.(prompt)}
+                                className="group flex items-center gap-3 rounded-[20px] border border-white/8 bg-white/[0.03] px-4 py-3 text-left transition-all duration-150 hover:border-[var(--accent)]/30 hover:bg-[var(--accent)]/10"
+                            >
+                                <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.04] text-[var(--accent)]">
+                                    <Icon size={18} />
+                                </div>
+                                <span className="min-w-0 text-sm font-medium text-[var(--text-primary)]">
+                                    {label}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+
+                    <p className="mt-5 text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">
+                        Type / for commands
+                    </p>
+                </div>
+            </motion.div>
         </div>
     );
 }
@@ -733,6 +798,7 @@ export function ChatWindow({
     onApprove,
     onReject,
     onRetry,
+    onQuickPrompt,
 }: ChatWindowProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [toolMeta, setToolMeta] = useState<Record<string, ToolMeta>>({});
@@ -752,7 +818,7 @@ export function ChatWindow({
     return (
         <div className="h-full overflow-y-auto p-3 sm:p-6 bg-transparent">
             {messages.length === 0 ? (
-                <EmptyState />
+                <EmptyState onQuickPrompt={onQuickPrompt} />
             ) : (
                 <div className="max-w-full sm:max-w-4xl mx-auto space-y-3 sm:space-y-4 pb-4">
                     {messages.map((message, idx) => {

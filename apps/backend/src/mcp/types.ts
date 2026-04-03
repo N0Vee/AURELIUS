@@ -10,6 +10,7 @@ export interface McpServerConfig {
     args?: string[];         // For stdio: e.g., ["-y", "@modelcontextprotocol/server-filesystem", "/path"]
     url?: string;            // For SSE: e.g., "http://localhost:3001/sse"
     env?: Record<string, string>;
+    headers?: Record<string, string>;
     enabled: boolean;
 }
 

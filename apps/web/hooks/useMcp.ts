@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { resolveBackendApiBase } from '@/lib/backend-api';
 
 // ============================================================
 // Types
@@ -16,6 +17,7 @@ export interface McpServer {
     args?: string[];
     url?: string;
     env?: Record<string, string>;
+    headers?: Record<string, string>;
     enabled: boolean;
     connected?: boolean;
     error?: string;
@@ -47,18 +49,28 @@ export interface UseMcpReturn {
 // Hook
 // ============================================================
 
-const API_BASE = process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:4243' 
-    : 'http://localhost:4243';
-
 export function useMcp(): UseMcpReturn {
     const [servers, setServers] = useState<McpServer[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const apiBaseRef = useRef<string | null>(null);
+
+    const ensureApiBase = useCallback(async (forceRefresh = false) => {
+        if (!forceRefresh && apiBaseRef.current) {
+            return apiBaseRef.current;
+        }
+
+        const resolved = await resolveBackendApiBase(forceRefresh);
+        apiBaseRef.current = resolved;
+        return resolved;
+    }, []);
 
     const fetchServers = useCallback(async () => {
+        setIsLoading(true);
+
         try {
-            const response = await fetch(`${API_BASE}/mcp/servers`);
+            const apiBase = await ensureApiBase();
+            const response = await fetch(`${apiBase}/mcp/servers`);
             if (!response.ok) throw new Error('Failed to fetch MCP servers');
             const data = await response.json();
             setServers(data);
@@ -68,15 +80,16 @@ export function useMcp(): UseMcpReturn {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [ensureApiBase]);
 
     useEffect(() => {
-        fetchServers();
+        void fetchServers();
     }, [fetchServers]);
 
     const addServer = useCallback(async (server: Omit<McpServer, 'connected' | 'error' | 'toolCount' | 'resourceCount'>): Promise<boolean> => {
         try {
-            const response = await fetch(`${API_BASE}/mcp/servers`, {
+            const apiBase = await ensureApiBase();
+            const response = await fetch(`${apiBase}/mcp/servers`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(server),
@@ -91,11 +104,12 @@ export function useMcp(): UseMcpReturn {
             setError(err instanceof Error ? err.message : 'Failed to add server');
             return false;
         }
-    }, [fetchServers]);
+    }, [ensureApiBase, fetchServers]);
 
     const updateServer = useCallback(async (id: string, updates: Partial<McpServer>): Promise<boolean> => {
         try {
-            const response = await fetch(`${API_BASE}/mcp/servers/${id}`, {
+            const apiBase = await ensureApiBase();
+            const response = await fetch(`${apiBase}/mcp/servers/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updates),
@@ -110,11 +124,12 @@ export function useMcp(): UseMcpReturn {
             setError(err instanceof Error ? err.message : 'Failed to update server');
             return false;
         }
-    }, [fetchServers]);
+    }, [ensureApiBase, fetchServers]);
 
     const deleteServer = useCallback(async (id: string): Promise<boolean> => {
         try {
-            const response = await fetch(`${API_BASE}/mcp/servers/${id}`, {
+            const apiBase = await ensureApiBase();
+            const response = await fetch(`${apiBase}/mcp/servers/${id}`, {
                 method: 'DELETE',
             });
             if (!response.ok) throw new Error('Failed to delete server');
@@ -124,11 +139,12 @@ export function useMcp(): UseMcpReturn {
             setError(err instanceof Error ? err.message : 'Failed to delete server');
             return false;
         }
-    }, [fetchServers]);
+    }, [ensureApiBase, fetchServers]);
 
     const connectServer = useCallback(async (id: string): Promise<boolean> => {
         try {
-            const response = await fetch(`${API_BASE}/mcp/servers/${id}/connect`, {
+            const apiBase = await ensureApiBase();
+            const response = await fetch(`${apiBase}/mcp/servers/${id}/connect`, {
                 method: 'POST',
             });
             if (!response.ok) throw new Error('Failed to connect server');
@@ -139,11 +155,12 @@ export function useMcp(): UseMcpReturn {
             setError(err instanceof Error ? err.message : 'Failed to connect');
             return false;
         }
-    }, [fetchServers]);
+    }, [ensureApiBase, fetchServers]);
 
     const disconnectServer = useCallback(async (id: string): Promise<boolean> => {
         try {
-            const response = await fetch(`${API_BASE}/mcp/servers/${id}/disconnect`, {
+            const apiBase = await ensureApiBase();
+            const response = await fetch(`${apiBase}/mcp/servers/${id}/disconnect`, {
                 method: 'POST',
             });
             if (!response.ok) throw new Error('Failed to disconnect server');
@@ -153,16 +170,16 @@ export function useMcp(): UseMcpReturn {
             setError(err instanceof Error ? err.message : 'Failed to disconnect');
             return false;
         }
-    }, [fetchServers]);
+    }, [ensureApiBase, fetchServers]);
 
     const refresh = useCallback(async () => {
-        setIsLoading(true);
         await fetchServers();
     }, [fetchServers]);
 
     const getServerTools = useCallback(async (id: string): Promise<McpTool[]> => {
         try {
-            const response = await fetch(`${API_BASE}/mcp/servers/${id}/tools`);
+            const apiBase = await ensureApiBase();
+            const response = await fetch(`${apiBase}/mcp/servers/${id}/tools`);
             if (!response.ok) throw new Error('Failed to fetch tools');
             const data = await response.json();
             return data.tools || [];
@@ -170,11 +187,12 @@ export function useMcp(): UseMcpReturn {
             setError(err instanceof Error ? err.message : 'Failed to fetch tools');
             return [];
         }
-    }, []);
+    }, [ensureApiBase]);
 
     const importConfig = useCallback(async (config: unknown): Promise<{ success: boolean; added: number; errors: string[]; skipped: number }> => {
         try {
-            const response = await fetch(`${API_BASE}/mcp/import`, {
+            const apiBase = await ensureApiBase();
+            const response = await fetch(`${apiBase}/mcp/import`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(config),
@@ -193,7 +211,7 @@ export function useMcp(): UseMcpReturn {
             setError(msg);
             return { success: false, added: 0, errors: [msg], skipped: 0 };
         }
-    }, [fetchServers]);
+    }, [ensureApiBase, fetchServers]);
 
     return {
         servers,

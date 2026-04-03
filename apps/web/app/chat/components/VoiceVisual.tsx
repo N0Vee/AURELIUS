@@ -4,7 +4,7 @@ import { useVoice, detectVoiceDecision } from '@/components/VoiceProvider';
 import { Mic, MicOff, Check, X, AlertTriangle, Zap, Loader2, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
-import { cn, isToolPart } from '@/lib/utils';
+import { cn, formatToolOutput, isFailedToolOutput, isToolPart } from '@/lib/utils';
 import { getToolName, type TextUIPart, type UIMessage } from 'ai';
 
 interface VoiceVisualProps {
@@ -48,6 +48,22 @@ const LEVEL_STYLES = {
     SENSITIVE: { border: 'border-[var(--sensitive)]/30', bg: 'bg-[var(--sensitive-glow)]', color: 'text-[var(--sensitive)]', btnBg: 'bg-[var(--sensitive)]/20 hover:bg-[var(--sensitive)]/30', Icon: Zap },
     DANGEROUS: { border: 'border-[var(--dangerous)]/30', bg: 'bg-[var(--dangerous-glow)]', color: 'text-[var(--dangerous)]', btnBg: 'bg-[var(--dangerous)]/20 hover:bg-[var(--dangerous)]/30', Icon: AlertTriangle },
 };
+
+function formatToolNameForVoice(name: string): string {
+    return name.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+}
+
+function formatToolInputPreview(input: unknown): string | null {
+    if (input == null) return null;
+
+    const text = typeof input === 'string'
+        ? input
+        : JSON.stringify(input, null, 2);
+
+    if (!text) return null;
+    if (text.length <= 240) return text;
+    return `${text.slice(0, 240)}…`;
+}
 
 // ── Subcomponents ─────────────────────────────────────────────────────────────
 
@@ -114,6 +130,60 @@ function ToolConfirmBubble({ msg, onApprove, onReject }: { msg: LegacyToolConfir
     );
 }
 
+function ApprovalRequestBubble({
+    toolName,
+    input,
+    onApprove,
+    onReject,
+}: {
+    toolName: string;
+    input?: unknown;
+    onApprove: () => void;
+    onReject: () => void;
+}) {
+    const inputPreview = formatToolInputPreview(input);
+
+    return (
+        <div className="flex justify-start">
+            <div className="max-w-[90%] rounded-lg px-3 py-2.5 border bg-[var(--sensitive-glow)] border-[var(--sensitive)]/30">
+                <div className="flex items-center gap-2">
+                    <Zap size={14} className="text-[var(--sensitive)]" />
+                    <span className="text-sm font-medium text-[var(--text-primary)]">Confirm {toolName}</span>
+                </div>
+
+                {inputPreview && (
+                    <pre className="mt-2 overflow-x-auto rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-2 text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap break-all">
+                        {inputPreview}
+                    </pre>
+                )}
+
+                <div className="flex gap-2 mt-2 pt-2 border-t border-[var(--border)]">
+                    <button onClick={onReject} className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[var(--surface)] hover:bg-red-500/20 text-xs text-[var(--text-secondary)] hover:text-red-400 transition-colors">
+                        <X size={12} /> Reject
+                    </button>
+                    <button onClick={onApprove} className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-colors bg-[var(--sensitive)]/20 hover:bg-[var(--sensitive)]/30 text-[var(--sensitive)]">
+                        <Check size={12} /> Approve
+                    </button>
+                    <span className="text-[10px] text-[var(--text-muted)] self-center ml-1">or say yes/no</span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ApprovalRunningBubble({ toolName }: { toolName: string }) {
+    return (
+        <div className="flex justify-start">
+            <div className="max-w-[90%] rounded-lg px-3 py-2 border bg-[var(--sensitive-glow)] border-[var(--sensitive)]/30">
+                <div className="flex items-center gap-2 text-xs">
+                    <Loader2 size={12} className="animate-spin text-[var(--sensitive)]" />
+                    <span className="text-[var(--text-secondary)]">Approved {toolName}. Running...</span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function MessageBubble({ msg, isStreaming, isLast, onApprove, onReject }: { msg: VoiceMessage; isStreaming: boolean; isLast: boolean; onApprove: (id: string) => void; onReject: (id: string) => void }) {
     const text = getMessageText(msg);
 
@@ -133,15 +203,49 @@ function MessageBubble({ msg, isStreaming, isLast, onApprove, onReject }: { msg:
             <div className="flex flex-col gap-2 justify-start">
                 {/* Tool invocation summaries */}
                 {toolParts.map((part) => {
-                    const name = getToolName(part).replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+                    const name = formatToolNameForVoice(getToolName(part));
                     const state = part.state;
+                    const failed = state === 'output-error' || (state === 'output-available' && isFailedToolOutput(part.output));
+                    const approval =
+                        'approval' in part
+                        && typeof part.approval === 'object'
+                        && part.approval !== null
+                            ? (part.approval as { approved?: boolean })
+                            : null;
 
                     if (state === 'output-available' || state === 'output-error') {
                         return (
                             <div key={part.toolCallId} className="flex justify-start">
-                                <div className="max-w-[90%] rounded-lg px-3 py-2 border bg-[var(--safe-glow)] border-[var(--safe)]/30">
+                                <div className={cn(
+                                    'max-w-[90%] rounded-lg px-3 py-2 border',
+                                    failed
+                                        ? 'bg-[var(--dangerous-glow)] border-[var(--dangerous)]/30'
+                                        : 'bg-[var(--safe-glow)] border-[var(--safe)]/30',
+                                )}>
                                     <div className="flex items-center gap-2 text-xs">
-                                        <Check size={12} className="text-[var(--safe)]" />
+                                        {failed ? (
+                                            <X size={12} className="text-[var(--dangerous)]" />
+                                        ) : (
+                                            <Check size={12} className="text-[var(--safe)]" />
+                                        )}
+                                        <span className="text-[var(--text-secondary)]">{name}</span>
+                                    </div>
+                                    {state === 'output-available' && failed && (
+                                        <p className="text-xs text-[var(--text-muted)] mt-1 truncate max-w-[250px]">
+                                            {formatToolOutput(part.output)}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    if (state === 'output-denied') {
+                        return (
+                            <div key={part.toolCallId} className="flex justify-start">
+                                <div className="max-w-[90%] rounded-lg px-3 py-2 border bg-[var(--dangerous-glow)] border-[var(--dangerous)]/30">
+                                    <div className="flex items-center gap-2 text-xs">
+                                        <X size={12} className="text-[var(--dangerous)]" />
                                         <span className="text-[var(--text-secondary)]">{name}</span>
                                     </div>
                                 </div>
@@ -149,9 +253,33 @@ function MessageBubble({ msg, isStreaming, isLast, onApprove, onReject }: { msg:
                         );
                     }
 
-                    if (state === 'input-available') {
-                        // Pending confirmation — rendered via pendingConfirmId in parent
-                        return null;
+                    if (state === 'approval-responded' && approval?.approved === false) {
+                        return (
+                            <div key={part.toolCallId} className="flex justify-start">
+                                <div className="max-w-[90%] rounded-lg px-3 py-2 border bg-[var(--dangerous-glow)] border-[var(--dangerous)]/30">
+                                    <div className="flex items-center gap-2 text-xs">
+                                        <X size={12} className="text-[var(--dangerous)]" />
+                                        <span className="text-[var(--text-secondary)]">Rejected {name}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    if (state === 'approval-responded' && approval?.approved !== false) {
+                        return <ApprovalRunningBubble key={part.toolCallId} toolName={name} />;
+                    }
+
+                    if (state === 'approval-requested') {
+                        return (
+                            <ApprovalRequestBubble
+                                key={part.toolCallId}
+                                toolName={name}
+                                input={part.input}
+                                onApprove={() => onApprove(part.toolCallId)}
+                                onReject={() => onReject(part.toolCallId)}
+                            />
+                        );
                     }
 
                     if (state === 'input-streaming') {

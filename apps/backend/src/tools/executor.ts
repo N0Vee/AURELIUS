@@ -9,6 +9,7 @@ import { getAutomationByName, executeAutomation } from './automations';
 import { saveMemory, deleteMemory } from '../memory/memory.store';
 import { searchMemories, embedAndCacheMemory } from '../memory/memory.search';
 import { isMcpTool, executeMcpTool } from '../mcp/executor.js';
+import { normalizeToolResult } from './tool-result';
 
 const execAsync = promisify(exec);
 
@@ -663,9 +664,9 @@ function isBlockedCommand(command: string): boolean {
 
 /**
  * Execute a registered tool by name with the given arguments.
- * Returns a plain-text result string that gets fed back to the LLM.
+ * Returns a status-prefixed plain-text result string that gets fed back to the LLM.
  */
-export async function executeTool(
+async function executeToolImpl(
     name: string,
     args: Record<string, unknown>,
 ): Promise<string> {
@@ -1249,4 +1250,11 @@ export async function executeTool(
         const message = err instanceof Error ? err.message : String(err);
         return `Error executing tool "${name}": ${message}`;
     }
+}
+
+export async function executeTool(
+    name: string,
+    args: Record<string, unknown>,
+): Promise<string> {
+    return normalizeToolResult(await executeToolImpl(name, args));
 }

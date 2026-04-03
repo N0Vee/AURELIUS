@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { cn, formatToolOutput, isFailedToolOutput } from '@/lib/utils';
 import type { DynamicToolUIPart } from 'ai';
 import {
     AlertTriangle,
@@ -27,7 +27,7 @@ interface ToolInvocationBubbleProps {
     part: DynamicToolUIPart | { type: string; toolCallId: string; state: string; input?: unknown; output?: unknown; errorText?: string; [k: string]: unknown };
     toolName: string;
     meta?: ToolMeta;
-    onApprove: (toolCallId: string, toolName: string, args: Record<string, unknown>) => void;
+    onApprove: (toolCallId: string, toolName: string) => void;
     onReject: (toolCallId: string, toolName: string) => void;
 }
 
@@ -83,6 +83,12 @@ export function ToolInvocationBubble({
     const description = meta?.description ?? '';
     const permission  = (meta?.permission ?? 'SENSITIVE') as keyof typeof LEVEL_CONFIG;
     const cfg         = LEVEL_CONFIG[permission] ?? LEVEL_CONFIG.SENSITIVE;
+    const approval =
+        'approval' in part
+        && typeof part.approval === 'object'
+        && part.approval !== null
+            ? (part.approval as { approved?: boolean })
+            : null;
 
     // ── Streaming / loading ───────────────────────────────────────────────
     if (part.state === 'input-streaming') {
@@ -116,6 +122,26 @@ export function ToolInvocationBubble({
         );
     }
 
+    // ── Approved / awaiting server execution ───────────────────────────
+    if (part.state === 'approval-responded' && approval?.approved !== false) {
+        return (
+            <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={cn(
+                    'flex items-center gap-2 px-3 py-2 rounded-xl border',
+                    cfg.bg,
+                    cfg.border,
+                )}
+            >
+                <Loader2 size={14} className={cn('animate-spin', cfg.labelCls)} />
+                <span className="text-xs text-[var(--text-muted)]">
+                    Approved <span className="font-medium">{displayName}</span>. Running…
+                </span>
+            </motion.div>
+        );
+    }
+
     // ── Output Error ──────────────────────────────────────────────────────
     if (part.state === 'output-error') {
         return (
@@ -140,7 +166,10 @@ export function ToolInvocationBubble({
     }
 
     // ── Output Denied ─────────────────────────────────────────────────────
-    if (part.state === 'output-denied') {
+    if (
+        part.state === 'output-denied'
+        || (part.state === 'approval-responded' && approval?.approved === false)
+    ) {
         return (
             <motion.div
                 initial={{ opacity: 0, y: 8 }}
@@ -161,12 +190,30 @@ export function ToolInvocationBubble({
 
     // ── Output Available (completed) ──────────────────────────────────────
     if (part.state === 'output-available') {
-        const result =
-            typeof part.output === 'string'
-                ? part.output
-                : part.output != null
-                    ? JSON.stringify(part.output)
-                    : '';
+        const failed = isFailedToolOutput(part.output);
+        const result = formatToolOutput(part.output);
+
+        if (failed) {
+            return (
+                <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-2xl bg-[var(--dangerous-glow)] border border-[var(--dangerous)]/30 max-w-full sm:max-w-[520px]"
+                >
+                    <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--dangerous)]/20 mt-0.5">
+                        <AlertCircle size={11} className="text-[var(--dangerous)]" />
+                    </div>
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="text-xs text-[var(--dangerous)] font-medium">
+                            {displayName} failed
+                        </span>
+                        <span className="text-xs text-[var(--text-muted)] break-all whitespace-pre-wrap">
+                            {result}
+                        </span>
+                    </div>
+                </motion.div>
+            );
+        }
 
         return (
             <motion.div
@@ -198,7 +245,7 @@ export function ToolInvocationBubble({
         );
     }
 
-    // ── Input Available (pending confirm) ─────────────────────────────────
+    // ── Approval Requested (pending confirm) ─────────────────────────────
     const args = (part.input ?? {}) as Record<string, unknown>;
     const hasArgs = Object.keys(args).length > 0;
 
@@ -282,7 +329,7 @@ export function ToolInvocationBubble({
                         Reject
                     </button>
                     <button
-                        onClick={() => onApprove(part.toolCallId, toolName, args)}
+                        onClick={() => onApprove(part.toolCallId, toolName)}
                         className={cn(
                             'flex items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-[var(--radius-md)] text-xs sm:text-sm font-medium text-white transition-all',
                             cfg.btnCls,

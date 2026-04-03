@@ -1,7 +1,23 @@
 import { z } from 'zod';
 
+const portSchema = z.coerce.number().int().positive();
+
+type EnvSource = Record<string, string | undefined>;
+
+// In development, generic PORT is often injected by unrelated tools.
+// Keep the backend stable on 4243 unless an explicit backend-specific env var
+// is provided. In production, still honor PORT for hosting platforms.
+export function resolveBackendPort(source: EnvSource): number {
+    return portSchema.parse(
+        source.AURELIUS_BACKEND_PORT
+        ?? source.BACKEND_PORT
+        ?? (source.NODE_ENV === 'production' ? source.PORT : undefined)
+        ?? '4243',
+    );
+}
+
 const envSchema = z.object({
-    PORT: z.coerce.number().default(4243),
+    PORT: portSchema.default(4243),
     HOST: z.string().default('0.0.0.0'),
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
@@ -31,4 +47,7 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
-export const env = envSchema.parse(process.env);
+export const env = envSchema.parse({
+    ...process.env,
+    PORT: resolveBackendPort(process.env),
+});
